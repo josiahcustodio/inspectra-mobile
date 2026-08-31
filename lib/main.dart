@@ -1,49 +1,73 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'core/constants/env_config.dart';
+import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
 import 'data/services/offline_service.dart';
 import 'providers/rating_provider.dart';
 import 'providers/pending_inspections_provider.dart';
 import 'providers/inspection_history_provider.dart';
 import 'providers/auth_provider.dart';
-import 'ui/screens/auth_wrapper.dart';
-
+import 'core/router/app_router.dart';
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  try {
+    WidgetsFlutterBinding.ensureInitialized();
+    
+    ErrorWidget.builder = (FlutterErrorDetails details) {
+      return Scaffold(
+        body: SingleChildScrollView(
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(
+                'UI CRASH:\n${details.exception}\n\n${details.stack}',
+                style: const TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ),
+          ),
+        ),
+      );
+    };
 
-  // Load environment variables
-  await dotenv.load(fileName: '.env');
-
-  // Initialize offline storage
-  await Hive.initFlutter();
-  await OfflineService.init();
-
-  // Initialize Supabase if keys are provided
-  if (SupabaseConfig.url.isNotEmpty &&
-      SupabaseConfig.anonKey.isNotEmpty &&
-      !SupabaseConfig.url.contains('YOUR_SUPABASE')) {
-    await Supabase.initialize(
-      url: SupabaseConfig.url,
-      anonKey: SupabaseConfig.anonKey,
+    // Initialize Firebase
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
     );
-  }
 
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => RatingProvider()),
-        ChangeNotifierProvider(create: (_) => PendingInspectionsProvider()),
-        ChangeNotifierProvider(create: (_) => InspectionHistoryProvider()),
-      ],
-      child: const ClowtecInspectorApp(),
-    ),
-  );
+    // Initialize offline storage
+    await Hive.initFlutter();
+    await OfflineService.init();
+
+    runApp(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => AuthProvider()),
+          ChangeNotifierProvider(create: (_) => RatingProvider()),
+          ChangeNotifierProvider(create: (_) => PendingInspectionsProvider()),
+          ChangeNotifierProvider(create: (_) => InspectionHistoryProvider()),
+        ],
+        child: const ClowtecInspectorApp(),
+      ),
+    );
+  } catch (e, stack) {
+    runApp(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(
+                'STARTUP CRASH:\n$e\n\n$stack',
+                style: const TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ));
+  }
 }
 
 class ClowtecInspectorApp extends StatelessWidget {
@@ -51,10 +75,14 @@ class ClowtecInspectorApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Clowtec Inspector',
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final router = createAppRouter(authProvider);
+
+    return MaterialApp.router(
+      title: 'Inspectra',
+      debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      home: const AuthWrapper(),
+      routerConfig: router,
     );
   }
 }

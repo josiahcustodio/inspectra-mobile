@@ -1,6 +1,9 @@
+import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import '../../data/models/establishment.dart';
 import '../../data/services/offline_service.dart';
+import '../../core/theme/app_theme.dart';
 import '../screens/add_establishment_screen.dart';
 import '../screens/inspection_form_screen.dart';
 import '../screens/qr_scanner_screen.dart';
@@ -46,13 +49,8 @@ class _NewInspectionModalState extends State<NewInspectionModal> {
   }
 
   void _onSuggestionTap(Establishment establishment) {
-    Navigator.pop(context);
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => InspectionFormScreen(establishment: establishment),
-      ),
-    );
+    context.pop();
+    context.push('/inspection', extra: establishment);
   }
 
   @override
@@ -70,7 +68,7 @@ class _NewInspectionModalState extends State<NewInspectionModal> {
         bottom: MediaQuery.of(context).viewInsets.bottom,
         left: 24,
         right: 24,
-        top: 24,
+        top: 12,
       ),
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -82,107 +80,192 @@ class _NewInspectionModalState extends State<NewInspectionModal> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            // Modal Handle
+            Center(
+              child: Container(
+                width: 40,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: AppTheme.border,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
               'Start New Inspection',
-              style: widget.theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
+              style: TextStyle(
+                fontFamily: '.SF Pro Display',
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.textPrimary,
+                letterSpacing: -0.5,
               ),
             ),
             const SizedBox(height: 8),
-            Text(
+            const Text(
               'Search by Establishment Name, ID, or scan a QR code.',
-              style: TextStyle(color: Colors.grey.shade600),
+              style: TextStyle(
+                fontFamily: '.SF Pro Text',
+                fontSize: 14,
+                color: AppTheme.textSecondary,
+              ),
             ),
             const SizedBox(height: 24),
             TextField(
               controller: _searchController,
               focusNode: _searchFocusNode,
+              style: const TextStyle(
+                fontFamily: '.SF Pro Text',
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: AppTheme.textPrimary,
+              ),
               decoration: InputDecoration(
                 hintText: 'Search Establishment...',
-                prefixIcon: Icon(Icons.search, color: widget.theme.colorScheme.primary),
+                hintStyle: const TextStyle(color: AppTheme.textSecondary),
+                prefixIcon: Icon(CupertinoIcons.search, color: widget.theme.colorScheme.primary),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
-                        icon: const Icon(Icons.clear, color: Colors.grey),
+                        icon: const Icon(CupertinoIcons.clear_thick_circled, color: AppTheme.textSecondary, size: 20),
                         onPressed: () {
                           _searchController.clear();
                           _searchFocusNode.unfocus();
                         })
                     : null,
                 filled: true,
-                fillColor: Colors.grey.shade50,
+                fillColor: AppTheme.background,
+                contentPadding: const EdgeInsets.symmetric(vertical: 16),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide(color: Colors.grey.shade200),
+                  borderSide: const BorderSide(color: AppTheme.border),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide(color: Colors.grey.shade200),
+                  borderSide: const BorderSide(color: AppTheme.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(color: widget.theme.colorScheme.primary, width: 1.5),
                 ),
               ),
             ),
             if (_suggestions.isNotEmpty)
               Container(
-                margin: const EdgeInsets.only(top: 8),
-                constraints: const BoxConstraints(maxHeight: 200),
+                margin: const EdgeInsets.only(top: 12),
+                constraints: const BoxConstraints(maxHeight: 250),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.grey.shade200),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(20),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    )
-                  ],
+                  border: Border.all(color: AppTheme.border),
+                  boxShadow: AppTheme.softShadow,
                 ),
                 child: ListView.separated(
                   shrinkWrap: true,
-                  padding: EdgeInsets.zero,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: _suggestions.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  separatorBuilder: (_, __) => const Divider(height: 1, indent: 16, endIndent: 16),
                   itemBuilder: (context, index) {
                     final est = _suggestions[index];
-                    return ListTile(
-                      title: Text(est.name,
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text('ID: ${est.id} • ${est.category}'),
-                      onTap: () => _onSuggestionTap(est),
+                    // Show a short reference code (last 8 chars) instead of the full UUID
+                    final shortId = est.id.length > 8 ? est.id.substring(est.id.length - 8).toUpperCase() : est.id.toUpperCase();
+                    return Material(
+                      color: Colors.transparent,
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                        leading: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.background,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.storefront_rounded, color: AppTheme.textSecondary, size: 20),
+                        ),
+                        title: Text(
+                          est.name,
+                          style: const TextStyle(
+                            fontFamily: '.SF Pro Display',
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.textPrimary,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '${est.barangay.isNotEmpty ? est.barangay : est.category} • #$shortId',
+                          style: const TextStyle(
+                            fontFamily: '.SF Pro Text',
+                            fontSize: 12,
+                            color: AppTheme.textSecondary,
+                          ),
+                        ),
+                        onTap: () => _onSuggestionTap(est),
+                      ),
                     );
                   },
                 ),
               ),
-            const SizedBox(height: 16),
-            ..._suggestions.isEmpty
-                ? [
-                    Center(
+            const SizedBox(height: 24),
+            // Show 'no results' hint only when a query has been typed but nothing matched
+            if (_searchController.text.isNotEmpty && _suggestions.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Row(
+                  children: [
+                    const Icon(Icons.search_off_rounded, color: AppTheme.textSecondary, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
                       child: Text(
-                        'OR',
-                        style: TextStyle(
-                            color: Colors.grey.shade400,
-                            fontWeight: FontWeight.bold),
+                        'No establishments found for "${_searchController.text}".',
+                        style: const TextStyle(
+                          fontFamily: '.SF Pro Text',
+                          fontSize: 13,
+                          color: AppTheme.textSecondary,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                  ],
+                ),
+              ),
+            ..._suggestions.isEmpty
+                ? [
+                    const Row(
+                      children: [
+                        Expanded(child: Divider(color: AppTheme.border)),
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16),
+                          child: Text(
+                            'OR',
+                            style: TextStyle(
+                              fontFamily: '.SF Pro Text',
+                              color: AppTheme.textSecondary,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        Expanded(child: Divider(color: AppTheme.border)),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
                     SizedBox(
                       width: double.infinity,
                       height: 56,
                       child: OutlinedButton.icon(
                         onPressed: () {
-                          Navigator.pop(context);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const QRScannerScreen()),
-                          );
+                          context.pop();
+                          context.push('/qr');
                         },
-                        icon: const Icon(Icons.qr_code_scanner),
+                        icon: const Icon(CupertinoIcons.qrcode_viewfinder),
                         label: const Text('Scan QR Code'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: widget.theme.colorScheme.primary,
                           side: BorderSide(color: widget.theme.colorScheme.primary),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
+                          ),
+                          textStyle: const TextStyle(
+                            fontFamily: '.SF Pro Display',
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
@@ -191,13 +274,17 @@ class _NewInspectionModalState extends State<NewInspectionModal> {
                     Center(
                       child: TextButton(
                         onPressed: () {
-                          Navigator.pop(context);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const AddEstablishmentScreen()),
-                          );
+                          context.pop();
+                          context.push('/establishments/add');
                         },
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppTheme.textSecondary,
+                          textStyle: const TextStyle(
+                            fontFamily: '.SF Pro Text',
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                         child: const Text('Add New Establishment Manually'),
                       ),
                     ),

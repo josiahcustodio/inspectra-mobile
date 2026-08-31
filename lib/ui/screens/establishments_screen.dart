@@ -1,18 +1,34 @@
+import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import '../../data/services/offline_service.dart';
 import 'add_establishment_screen.dart';
+import 'edit_establishment_screen.dart';
 
-class EstablishmentsScreen extends StatelessWidget {
+class EstablishmentsScreen extends StatefulWidget {
   const EstablishmentsScreen({super.key});
+
+  @override
+  State<EstablishmentsScreen> createState() => _EstablishmentsScreenState();
+}
+
+class _EstablishmentsScreenState extends State<EstablishmentsScreen> {
+  String _searchQuery = '';
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final primary = theme.colorScheme.primary;
-    final establishments = OfflineService.getLocalEstablishments();
+    
+    var establishments = OfflineService.getLocalEstablishments();
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      establishments = establishments.where((e) => 
+        e.name.toLowerCase().contains(query) || 
+        e.address.toLowerCase().contains(query)
+      ).toList();
+    }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6FAF5),
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -32,15 +48,16 @@ class EstablishmentsScreen extends StatelessWidget {
                     ),
                   ),
                   GestureDetector(
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const AddEstablishmentScreen()),
-                    ),
+                    onTap: () async {
+                      final result = await context.push<bool>('/establishments/add');
+                      if (result == true) {
+                        setState(() {});
+                      }
+                    },
                     child: Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: primary.withOpacity(0.1),
+                        color: primary.withValues(alpha: 0.1),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(Icons.add_rounded, color: primary),
@@ -60,12 +77,17 @@ class EstablishmentsScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Colors.black.withValues(alpha: 0.05),
                       blurRadius: 10,
                     )
                   ],
                 ),
                 child: TextField(
+                  onChanged: (val) {
+                    setState(() {
+                      _searchQuery = val;
+                    });
+                  },
                   decoration: InputDecoration(
                     hintText: 'Search establishments…',
                     prefixIcon: Icon(Icons.search, color: Colors.grey.shade400),
@@ -85,7 +107,7 @@ class EstablishmentsScreen extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(Icons.store_outlined,
-                              size: 64, color: primary.withOpacity(0.3)),
+                              size: 64, color: primary.withValues(alpha: 0.3)),
                           const SizedBox(height: 12),
                           Text(
                             'No establishments yet',
@@ -101,58 +123,67 @@ class EstablishmentsScreen extends StatelessWidget {
                       separatorBuilder: (_, __) => const SizedBox(height: 12),
                       itemBuilder: (_, i) {
                         final e = establishments[i];
-                        return Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(18),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.04),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              )
-                            ],
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 46,
-                                height: 46,
-                                decoration: BoxDecoration(
-                                  color: primary.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(14),
+                        return InkWell(
+                          onTap: () async {
+                            final result = await context.push<bool>('/establishments/edit', extra: e);
+                            if (result == true) {
+                              setState(() {}); // Refresh list
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(18),
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(18),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.04),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                )
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 46,
+                                  height: 46,
+                                  decoration: BoxDecoration(
+                                    color: primary.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  child:
+                                      Icon(Icons.store_rounded, color: primary),
                                 ),
-                                child:
-                                    Icon(Icons.store_rounded, color: primary),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      e.name,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 15,
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        e.name,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 15,
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      e.address,
-                                      style: TextStyle(
-                                          color: Colors.grey.shade500,
-                                          fontSize: 12),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        e.formattedAddress,
+                                        style: TextStyle(
+                                            color: Colors.grey.shade500,
+                                            fontSize: 12),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              Icon(Icons.chevron_right_rounded,
-                                  color: Colors.grey.shade400),
-                            ],
+                                Icon(Icons.chevron_right_rounded,
+                                    color: Colors.grey.shade400),
+                              ],
+                            ),
                           ),
                         );
                       },

@@ -7,6 +7,20 @@ class RatingProvider extends ChangeNotifier {
 
   final Map<String, int> _weights = {};
 
+  /// Atomically resets all state and initializes weights from [templates].
+  /// Prefer this over calling reset() + initWeights() separately to avoid
+  /// a partially-initialized state window during rapid navigation.
+  void init(List<ChecklistTemplate> templates) {
+    answers.clear();
+    itemNotes.clear();
+    _weights.clear();
+    for (var t in templates) {
+      _weights[t.id] = t.weight;
+    }
+    // Single notify after the state is fully valid
+    notifyListeners();
+  }
+
   void reset() {
     answers.clear();
     itemNotes.clear();
@@ -24,6 +38,7 @@ class RatingProvider extends ChangeNotifier {
 
   void setNote(String itemId, String note) {
     itemNotes[itemId] = note;
+    notifyListeners();
   }
 
   void initWeights(List<ChecklistTemplate> templates) {

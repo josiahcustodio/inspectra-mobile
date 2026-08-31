@@ -1,4 +1,4 @@
-package com.example.clowtec_inspector
+package com.clowtec.inspector
 
 import io.flutter.embedding.android.FlutterActivity
 

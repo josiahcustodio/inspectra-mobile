@@ -39,4 +39,17 @@ class ChecklistTemplate extends HiveObject {
       weight: (json['weight'] as num?)?.toInt() ?? 5,
     );
   }
+
+  /// Creates a minimal placeholder used when a template ID in notes
+  /// no longer matches any loaded template. This prevents a [StateError]
+  /// crash from [List.firstWhere] in inspection submission logic.
+  factory ChecklistTemplate.empty(String id) {
+    return ChecklistTemplate(
+      id: id,
+      category: '',
+      subCategory: '',
+      item: id, // Fall back to showing the raw ID in the remarks string
+      weight: 0,
+    );
+  }
 }

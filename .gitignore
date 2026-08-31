@@ -1,56 +1,44 @@
-# Miscellaneous
-*.class
-*.log
-*.pyc
-*.swp
-.DS_Store
-.atom/
-.build/
-.buildlog/
-.history
-.svn/
-.swiftpm/
-migrate_working_dir/
+﻿# Critical: Secret files - NEVER commit these
+serviceAccountKey.json
+*.pem
+*.p8
+*.p12
+*.keystore
+google-services.json
+GoogleService-Info.plist
 
-# IntelliJ related
-*.iml
-*.ipr
-*.iws
-.idea/
-
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
+# Flutter / Dart
 .dart_tool/
+.flutter-plugins
 .flutter-plugins-dependencies
+.packages
 .pub-cache/
 .pub/
-/build/
-/coverage/
+build/
+*.iml
 
-# Symbolication related
-app.*.symbols
+# Android
+android/local.properties
+android/.gradle/
+android/key.properties
+android/app/google-services.json
 
-# Obfuscation related
-app.*.map.json
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/ephemeral/
+ios/Runner/GoogleService-Info.plist
 
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
-
-# Environment variables
+# Environment / config
 .env
 .env.*
+!.env.example
 
-# Dependencies
-node_modules/
+# Temporary / OS files
+.DS_Store
+Thumbs.db
+desktop.ini
 
-# Production builds
-dist/
-
+# IDE
+.idea/
+.vscode/

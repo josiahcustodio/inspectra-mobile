@@ -1,3 +1,4 @@
+import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
@@ -21,79 +22,108 @@ class PendingCard extends StatelessWidget {
       onTap: provider.isEmpty ? null : () => _showPendingModal(context, provider),
       borderRadius: AppTheme.cardRadius,
       child: Container(
-        decoration: BoxDecoration(
-          color: theme.colorScheme.primary,
-          borderRadius: AppTheme.cardRadius,
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            // Icon
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                Icons.assignment_late_rounded,
-                color: Colors.white.withValues(alpha: 0.9),
-                size: 24,
-              ),
-            ),
-            // Body
-            if (provider.isEmpty)
-              const Text(
-                'No pending\ninspection results',
-                style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.3),
-              )
-            else ...[
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        decoration: AppTheme.glassDecoration(Colors.white),
+        child: Padding(
+          padding: const EdgeInsets.all(12), // Reduced padding to fit 140px bento height
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    '${provider.pendingCount}',
-                    style: const TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      height: 1.0,
-                      letterSpacing: -1,
+                  const Text(
+                    'Pending',
+                    style: TextStyle(
+                      fontFamily: '.SF Pro Text',
+                      color: AppTheme.textSecondary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const Text(
-                    'Pending\nInspections',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white70,
-                      height: 1.2,
+                  Icon(Icons.sync_rounded, color: provider.isSyncing ? AppTheme.primary : Colors.grey.shade400, size: 16),
+                ],
+              ),
+              Center(
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 48, // Reduced from 64
+                      height: 48,
+                      child: CircularProgressIndicator(
+                        value: provider.isEmpty ? 0 : 0.65,
+                        backgroundColor: Colors.grey.shade100,
+                        color: AppTheme.primary,
+                        strokeWidth: 5,
+                        strokeCap: StrokeCap.round,
+                      ),
+                    ),
+                    Text(
+                      '${provider.pendingCount}',
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 20, // Reduced from 24
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.textPrimary,
+                        height: 1.0,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    height: 28, // Reduced from 32
+                    child: OutlinedButton(
+                      onPressed: provider.isSyncing || provider.isEmpty ? null : onSubmitAll,
+                      style: OutlinedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        foregroundColor: AppTheme.primaryDark,
+                        side: const BorderSide(color: AppTheme.primary, width: 1.5), // Crisp Emerald border
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                      child: provider.isSyncing
+                          ? const SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppTheme.primaryDark,
+                              ))
+                          : const Text(
+                              'Sync Now',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800, // High-contrast text
+                                color: AppTheme.primaryDark,
+                              ),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    provider.lastSyncedLabel != null
+                        ? 'Last synced: ${provider.lastSyncedLabel}'
+                        : 'Never synced',
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 10,
+                      color: Colors.grey,
                     ),
                   ),
                 ],
               ),
-              SizedBox(
-                width: double.infinity,
-                height: 32,
-                child: ElevatedButton(
-                  onPressed: provider.isSyncing ? null : onSubmitAll,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: theme.colorScheme.primary,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                  ),
-                  child: provider.isSyncing
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('Submit All'),
-                ),
-              ),
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -172,7 +202,7 @@ class PendingCard extends StatelessWidget {
                                                 if (success) {
                                                   ScaffoldMessenger.of(context).showSnackBar(
                                                       const SnackBar(content: Text('Synced Successfully!')));
-                                                  if (provider.isEmpty) Navigator.pop(context);
+                                                  if (provider.isEmpty) context.pop();
                                                 } else {
                                                   ScaffoldMessenger.of(context).showSnackBar(
                                                       const SnackBar(content: Text('Failed to sync. Check connection.')));

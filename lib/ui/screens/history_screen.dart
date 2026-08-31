@@ -1,8 +1,10 @@
+import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/inspection_log.dart';
 import '../../providers/inspection_history_provider.dart';
+import 'inspection_details_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -24,8 +26,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget build(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
 
+    // scaffold
     return Scaffold(
-      backgroundColor: const Color(0xFFF6FAF5),
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -136,9 +138,20 @@ class _HistoryCard extends StatelessWidget {
         boxShadow: AppTheme.softShadow,
         border: Border.all(color: Colors.grey.shade100),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+      child: Material(
+        color: Colors.transparent,
+        // inkwell
+        child: InkWell(
+          borderRadius: AppTheme.cardRadius,
+          onTap: () {
+            context.push(
+              '/inspection/details/${log.id}',
+              extra: establishmentName,
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ── Top row: badge + establishment name ────────────────────────
@@ -218,6 +231,8 @@ class _HistoryCard extends StatelessWidget {
               ),
             ],
           ],
+        ),
+      ),
         ),
       ),
     );
@@ -314,6 +329,7 @@ class _ErrorState extends StatelessWidget {
               style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
             ),
             const SizedBox(height: 20),
+            // elevatedbutton
             ElevatedButton.icon(
               onPressed: onRetry,
               style: ElevatedButton.styleFrom(backgroundColor: primary),

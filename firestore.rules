@@ -1,0 +1,99 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserRole() {
+      // Guard with exists() — a brand-new signed-in user has no profile doc
+      // yet, and .data.role on a missing doc would error the whole rule
+      // rather than cleanly evaluate to "no role".
+      return exists(/databases/$(database)/documents/profiles/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role
+        : null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && getUserRole() == 'admin';
+    }
+
+    function isOfficer() {
+      return isAuthenticated() && getUserRole() == 'officer';
+    }
+
+    function isAuthorized() {
+      return isAdmin() || isOfficer();
+    }
+
+    // 1. Profiles
+    match /profiles/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+
+      // Bootstrap: a signed-in user may create ONLY their own profile doc,
+      // and only with role 'officer'. This is the client-side stand-in for
+      // the old Supabase handle_new_user() trigger (see
+      // supabase/migrations/20260625171500_auth_roles.sql in inspectra-web) —
+      // there is no Cloud Function yet, so self-signup can never grant
+      // 'admin'. Without this, no user could ever get a profile at all:
+      // isAdmin() requires an existing profile saying so, and nobody starts
+      // as admin.
+      allow create: if isAuthenticated()
+        && request.auth.uid == userId
+        && request.resource.data.role == 'officer';
+
+      // Once created, role changes (including promotion to admin) are
+      // admin-only. The very first admin has to be set by hand in the
+      // Firebase console — there is no self-promotion path by design.
+      allow update, delete: if isAdmin();
+    }
+
+    // 2. Establishments
+    match /establishments/{establishmentId} {
+      allow read: if isAuthorized();
+      allow create, update: if isAuthorized();
+      allow delete: if isAdmin();
+    }
+
+    // 3. Inspection Logs
+    match /inspection_logs/{logId} {
+      allow read: if isAuthorized();
+      allow create, update: if isAuthorized();
+      allow delete: if isAdmin();
+
+      // Per-item checklist answers — same authorization as the parent log.
+      // Required for both clients' inspection_results sub-collection sync
+      // (SyncService._submitOfflineResults on mobile; pushInspectionResults/
+      // fetchInspectionResults in inspectra-web's sync.ts). Without this
+      // nested match it falls through to the default-deny rule below and
+      // both clients' result sync silently breaks.
+      match /inspection_results/{itemId} {
+        allow read: if isAuthorized();
+        allow create, update: if isAuthorized();
+        allow delete: if isAdmin();
+      }
+    }
+
+    // 4. Reference Data
+    match /categories/{categoryId} {
+      allow read: if isAuthorized();
+      allow write: if isAdmin();
+    }
+    match /checklist_templates/{templateId} {
+      allow read: if isAuthorized();
+      allow write: if isAdmin();
+    }
+    match /inspectors/{inspectorId} {
+      allow read: if isAuthorized();
+      allow write: if isAdmin();
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

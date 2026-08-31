@@ -1,3 +1,4 @@
+import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
@@ -51,12 +52,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     setState(() => _isNavigating = true);
     controller.stop();
     _searchFocusNode.unfocus();
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => InspectionFormScreen(establishment: establishment),
-      ),
-    );
+    context.pushReplacement('/inspection', extra: establishment);
   }
 
   @override
@@ -77,13 +73,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
         if (establishment != null) {
           setState(() => _isNavigating = true);
           controller.stop();
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (_) =>
-                  InspectionFormScreen(establishment: establishment),
-            ),
-          );
+          context.pushReplacement('/inspection', extra: establishment);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -168,7 +158,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
                 child: Row(
                   children: [
                     GestureDetector(
-                      onTap: () => Navigator.pop(context),
+                      onTap: () => context.pop(),
                       child: Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
@@ -244,10 +234,13 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
                         separatorBuilder: (_, __) => const Divider(height: 1),
                         itemBuilder: (context, index) {
                           final est = _suggestions[index];
-                          return ListTile(
-                            title: Text(est.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: Text('ID: ${est.id} • ${est.category}'),
-                            onTap: () => _onSuggestionTap(est),
+                          return Material(
+                            color: Colors.transparent,
+                            child: ListTile(
+                              title: Text(est.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                              subtitle: Text('ID: ${est.id} • ${est.category}'),
+                              onTap: () => _onSuggestionTap(est),
+                            ),
                           );
                         },
                       ),
@@ -291,11 +284,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
                   const SizedBox(height: 16),
                   InkWell(
                     onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const AddEstablishmentScreen()),
-                      );
+                      context.push('/establishments/add');
                     },
                     child: const Padding(
                       padding: EdgeInsets.all(8.0),

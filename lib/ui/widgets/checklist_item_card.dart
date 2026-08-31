@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../data/models/checklist_template.dart';
 import '../../providers/rating_provider.dart';
+import '../../core/theme/app_theme.dart';
 
 class ChecklistItemCard extends StatelessWidget {
   final ChecklistTemplate item;
@@ -10,14 +11,14 @@ class ChecklistItemCard extends StatelessWidget {
 
   IconData _getIconForSubCategory(String subCategory) {
     final lower = subCategory.toLowerCase();
-    if (lower.contains('waste') || lower.contains('garbage')) return Icons.delete_outline;
+    if (lower.contains('waste') || lower.contains('garbage')) return Icons.delete_outline_rounded;
     if (lower.contains('handwash') || lower.contains('water')) return Icons.water_drop_outlined;
     if (lower.contains('food')) return Icons.restaurant_outlined;
     if (lower.contains('personnel') || lower.contains('health')) return Icons.health_and_safety_outlined;
     if (lower.contains('permit') || lower.contains('document')) return Icons.description_outlined;
     if (lower.contains('pest')) return Icons.bug_report_outlined;
     if (lower.contains('toilet') || lower.contains('sanitary')) return Icons.wc_outlined;
-    return Icons.check_circle_outline; // Default
+    return Icons.check_circle_outline_rounded; // Default
   }
 
   @override
@@ -27,18 +28,20 @@ class ChecklistItemCard extends StatelessWidget {
         final currentAnswer = provider.answers[item.id];
         final isFail = currentAnswer == 'Fail';
 
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        // Dynamic border coloring based on selection
+        Color borderColor = AppTheme.border;
+        if (currentAnswer == 'Pass') borderColor = AppTheme.primary.withAlpha(100);
+        if (currentAnswer == 'Fail') borderColor = Colors.redAccent.withAlpha(100);
+        if (currentAnswer == 'NA') borderColor = AppTheme.textSecondary.withAlpha(100);
+
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            borderRadius: AppTheme.cardRadius,
+            border: Border.all(color: borderColor, width: 1.5),
+            boxShadow: AppTheme.softShadow,
           ),
           child: Padding(
             padding: const EdgeInsets.all(16.0),
@@ -52,13 +55,13 @@ class ChecklistItemCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade50,
+                        color: AppTheme.background,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
                         _getIconForSubCategory(item.subCategory),
-                        color: Colors.grey.shade700,
-                        size: 28,
+                        color: AppTheme.textSecondary,
+                        size: 24,
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -70,30 +73,34 @@ class ChecklistItemCard extends StatelessWidget {
                           Text(
                             item.item, // Main Title
                             style: const TextStyle(
+                              fontFamily: '.SF Pro Display',
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
-                              color: Colors.black87,
+                              color: AppTheme.textPrimary,
                               letterSpacing: -0.3,
                               height: 1.2,
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 6),
                           Text(
                             item.subCategory, // Using SubCategory as clarification line
-                            style: TextStyle(
+                            style: const TextStyle(
+                              fontFamily: '.SF Pro Text',
                               fontSize: 13,
-                              color: Colors.grey.shade500,
+                              fontWeight: FontWeight.w500,
+                              color: AppTheme.textSecondary,
                               height: 1.3,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    // Segmented Button
-                    _buildSegmentedControl(context, currentAnswer, provider),
                   ],
                 ),
+                const SizedBox(height: 16),
+                // Full-width Segmented Control
+                _buildSegmentedControl(context, currentAnswer, provider),
+                
                 // Expanded Notes Area for Failures
                 AnimatedSize(
                   duration: const Duration(milliseconds: 300),
@@ -105,18 +112,27 @@ class ChecklistItemCard extends StatelessWidget {
                             initialValue: provider.itemNotes[item.id] ?? '',
                             onChanged: (val) => provider.setNote(item.id, val),
                             decoration: InputDecoration(
-                              hintText: 'Add deficiency notes...',
-                              hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-                              prefixIcon: Icon(Icons.edit_note, color: Colors.grey.shade400),
+                              hintText: 'Add deficiency notes (Required)...',
+                              hintStyle: const TextStyle(
+                                  color: Colors.black38, fontFamily: '.SF Pro Text', fontSize: 14),
+                              prefixIcon: const Icon(Icons.edit_note_rounded, color: Colors.black38),
                               filled: true,
-                              fillColor: Colors.red.shade50.withValues(alpha: 0.5),
-                              contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                              fillColor: Colors.red.shade50.withAlpha(128),
+                              contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
+                                borderSide: BorderSide(color: Colors.red.shade200),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: Colors.red.shade200),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(color: Colors.redAccent, width: 1.5),
                               ),
                             ),
-                            style: const TextStyle(fontSize: 14),
+                            style: const TextStyle(fontFamily: '.SF Pro Text', fontSize: 14),
                           ),
                         )
                       : const SizedBox.shrink(),
@@ -132,29 +148,51 @@ class ChecklistItemCard extends StatelessWidget {
   Widget _buildSegmentedControl(BuildContext context, String? currentAnswer, RatingProvider provider) {
     final bool isPass = currentAnswer == 'Pass';
     final bool isFail = currentAnswer == 'Fail';
+    final bool isNa = currentAnswer == 'NA';
+
+    final String lowerSubCategory = item.subCategory.toLowerCase();
+    final bool removeNa = lowerSubCategory.contains('water') || lowerSubCategory.contains('waste');
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.grey.shade100,
+        color: AppTheme.background,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.border),
       ),
       padding: const EdgeInsets.all(4),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          _SegmentButton(
-            label: 'PASS',
-            isSelected: isPass,
-            selectedColor: const Color(0xFF4CAF50), // Soft Green
-            onTap: () => provider.setAnswer(item.id, 'Pass'),
+          Expanded(
+            child: _SegmentButton(
+              label: 'PASS',
+              icon: Icons.check_rounded,
+              isSelected: isPass,
+              selectedColor: AppTheme.primary,
+              onTap: () => provider.setAnswer(item.id, 'Pass'),
+            ),
           ),
           const SizedBox(width: 4),
-          _SegmentButton(
-            label: 'FAIL',
-            isSelected: isFail,
-            selectedColor: const Color(0xFFF44336), // Warning Red
-            onTap: () => provider.setAnswer(item.id, 'Fail'),
+          Expanded(
+            child: _SegmentButton(
+              label: 'FAIL',
+              icon: Icons.close_rounded,
+              isSelected: isFail,
+              selectedColor: const Color(0xFFEF4444), // Vibrant Red
+              onTap: () => provider.setAnswer(item.id, 'Fail'),
+            ),
           ),
+          if (!removeNa) ...[
+            const SizedBox(width: 4),
+            Expanded(
+              child: _SegmentButton(
+                label: 'N/A',
+                icon: Icons.horizontal_rule_rounded,
+                isSelected: isNa,
+                selectedColor: AppTheme.textSecondary, // Slate Gray
+                onTap: () => provider.setAnswer(item.id, 'NA'),
+              ),
+            ),
+          ]
         ],
       ),
     );
@@ -163,12 +201,14 @@ class ChecklistItemCard extends StatelessWidget {
 
 class _SegmentButton extends StatelessWidget {
   final String label;
+  final IconData icon;
   final bool isSelected;
   final Color selectedColor;
   final VoidCallback onTap;
 
   const _SegmentButton({
     required this.label,
+    required this.icon,
     required this.isSelected,
     required this.selectedColor,
     required this.onTap,
@@ -182,28 +222,40 @@ class _SegmentButton extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeInOut,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
           color: isSelected ? selectedColor : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: selectedColor.withValues(alpha: 0.3),
+                    color: selectedColor.withAlpha(76), // 30% opacity
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   )
                 ]
               : [],
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-            color: isSelected ? Colors.white : Colors.grey.shade500,
-            letterSpacing: 0.5,
-          ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: isSelected ? Colors.white : AppTheme.textSecondary,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: '.SF Pro Text',
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                color: isSelected ? Colors.white : AppTheme.textSecondary,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
         ),
       ),
     );

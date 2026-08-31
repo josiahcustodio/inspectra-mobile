@@ -1,3 +1,4 @@
+import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import '../../data/services/offline_service.dart';
 import 'main_navigation_screen.dart';
@@ -36,9 +37,7 @@ class _SplashSyncScreenState extends State<SplashSyncScreen> {
       if (!mounted) return;
 
       // Navigate to the primary workflow
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
-      );
+      context.go('/home');
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -47,9 +46,7 @@ class _SplashSyncScreenState extends State<SplashSyncScreen> {
         });
         await Future.delayed(const Duration(seconds: 2));
         if (!mounted) return;
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
-        );
+        context.go('/home');
       }
     }
   }

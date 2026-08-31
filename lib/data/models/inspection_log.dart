@@ -9,6 +9,7 @@ class InspectionLog {
   final String? remarks;
   final String inspectionDate;
   final String? photoEvidenceUrl;
+  final List<Map<String, dynamic>> results;
 
   InspectionLog({
     String? id,
@@ -19,8 +20,10 @@ class InspectionLog {
     this.remarks,
     String? inspectionDate,
     this.photoEvidenceUrl,
-  })  : id = id ?? const Uuid().v4(),
-        inspectionDate = inspectionDate ?? DateTime.now().toIso8601String();
+    List<Map<String, dynamic>>? results,
+  })  : id = (id == null || id.isEmpty) ? const Uuid().v4() : id,
+        inspectionDate = inspectionDate ?? DateTime.now().toIso8601String(),
+        results = results ?? const [];
 
   factory InspectionLog.fromJson(Map<String, dynamic> json) {
     return InspectionLog(
@@ -32,6 +35,10 @@ class InspectionLog {
       remarks: json['remarks'] as String?,
       inspectionDate: json['inspection_date'] as String?,
       photoEvidenceUrl: json['photo_evidence_url'] as String?,
+      results: (json['results'] as List?)
+              ?.map((e) => Map<String, dynamic>.from(e as Map))
+              .toList() ??
+          [],
     );
   }
 
@@ -45,6 +52,7 @@ class InspectionLog {
       'remarks': remarks,
       'inspection_date': inspectionDate,
       'photo_evidence_url': photoEvidenceUrl,
+      'results': results,
     };
   }
 }

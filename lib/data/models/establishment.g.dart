@@ -17,7 +17,7 @@ class EstablishmentAdapter extends TypeAdapter<Establishment> {
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return Establishment(
-      id: fields[0] as String,
+      id: fields[0] as String?,
       name: fields[1] as String,
       category: fields[2] as String,
       address: fields[3] as String,
@@ -26,13 +26,17 @@ class EstablishmentAdapter extends TypeAdapter<Establishment> {
       personnelWithHc: fields[6] as int,
       sanitaryPermitNo: fields[7] as String,
       controlNo: fields[8] as String,
+      barangay: fields[9] == null ? '' : fields[9] as String,
+      categoryId: fields[10] as String?,
+      isSynced: fields[11] == null ? true : fields[11] as bool,
+      createdAt: fields[12] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Establishment obj) {
     writer
-      ..writeByte(9)
+      ..writeByte(13)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -50,7 +54,15 @@ class EstablishmentAdapter extends TypeAdapter<Establishment> {
       ..writeByte(7)
       ..write(obj.sanitaryPermitNo)
       ..writeByte(8)
-      ..write(obj.controlNo);
+      ..write(obj.controlNo)
+      ..writeByte(9)
+      ..write(obj.barangay)
+      ..writeByte(10)
+      ..write(obj.categoryId)
+      ..writeByte(11)
+      ..write(obj.isSynced)
+      ..writeByte(12)
+      ..write(obj.createdAt);
   }
 
   @override
