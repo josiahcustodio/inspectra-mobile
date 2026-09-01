@@ -236,7 +236,13 @@ class SyncService {
   // ─── Inspection History ──────────────────────────────────────────────────────
 
   /// Fetches inspection logs from Firestore, ordered newest first.
-  /// Returns a list of maps with an extra 'establishment_name' key merged in.
+  /// Resolves establishment names by:
+  ///   1. Using the name already stored on the log doc (fast path).
+  ///   2. Looking up the local Hive cache (offline-capable).
+  ///   3. Fetching the name DIRECTLY from Firestore `establishments` collection
+  ///      for any phone with an empty Hive cache (guaranteed resolution).
+  /// Also backfills resolved names back to old log docs so every phone
+  /// benefits going forward (one-time self-healing per device).
   static Future<List<Map<String, dynamic>>> fetchInspectionHistory({
     int limit = 50,
   }) async {
@@ -250,26 +256,119 @@ class SyncService {
       final logs = snapshot.docs.map((doc) {
         final data = Map<String, dynamic>.from(doc.data());
         data['id'] = doc.id;
+        data['_doc_id'] = doc.id;
         return data;
       }).toList();
 
-      // Enrich with establishment names using the local Hive cache for speed.
-      return logs.map((log) {
-        final enriched = Map<String, dynamic>.from(log);
+      // --- Step 1: quick pass using already-saved names & Hive cache ---
+      final List<Map<String, dynamic>> toBackfill = [];
+      final Set<String> missingEstIds = {};
+
+      final partiallyEnriched = logs.map((log) {
+        final result = Map<String, dynamic>.from(log);
+
+        // Already saved in Firestore — fastest path, no lookup needed.
+        final savedName = log['establishment_name'] as String?;
+        if (savedName != null && savedName.isNotEmpty) return result;
+
         final estId = log['establishment_id'] as String?;
-        if (estId != null) {
-          final est = OfflineService.getEstablishmentById(estId);
-          enriched['establishment_name'] = est?.name ?? 'Unknown Establishment';
-        } else {
-          enriched['establishment_name'] = 'Unknown Establishment';
+        if (estId == null) {
+          result['establishment_name'] = 'Unknown Establishment';
+          return result;
         }
-        return enriched;
+
+        // Try local Hive cache.
+        final est = OfflineService.getEstablishmentById(estId);
+        final resolvedName = est?.name;
+        if (resolvedName != null && resolvedName.isNotEmpty) {
+          result['establishment_name'] = resolvedName;
+          toBackfill.add({'doc_id': log['_doc_id'], 'name': resolvedName});
+        } else {
+          // Mark for Firestore lookup — phone has no local cache.
+          result['establishment_name'] = '__PENDING__';
+          missingEstIds.add(estId);
+        }
+        return result;
       }).toList();
+
+      // --- Step 2: Firestore fallback for phones with empty Hive cache ---
+      if (missingEstIds.isNotEmpty) {
+        // Fetch all missing establishment docs directly from Firestore.
+        // We do it in chunks of 10 (Firestore 'whereIn' limit).
+        final idList = missingEstIds.toList();
+        final Map<String, String> idToName = {};
+        for (int i = 0; i < idList.length; i += 10) {
+          final chunk = idList.sublist(
+              i, i + 10 > idList.length ? idList.length : i + 10);
+          try {
+            final estSnap = await _db
+                .collection('establishments')
+                .where(FieldPath.documentId, whereIn: chunk)
+                .get()
+                .timeout(const Duration(seconds: 8));
+            for (final doc in estSnap.docs) {
+              final name = doc.data()['business_name'] as String?;
+              if (name != null && name.isNotEmpty) {
+                idToName[doc.id] = name;
+              }
+            }
+          } catch (e) {
+            debugPrint('Firestore establishment lookup failed: $e');
+          }
+        }
+
+        // Fill in the PENDING placeholders with fetched names.
+        for (final log in partiallyEnriched) {
+          if (log['establishment_name'] == '__PENDING__') {
+            final estId = log['establishment_id'] as String?;
+            final fetchedName =
+                estId != null ? idToName[estId] : null;
+            final resolved =
+                fetchedName ?? 'Unknown Establishment';
+            log['establishment_name'] = resolved;
+            if (fetchedName != null) {
+              toBackfill
+                  .add({'doc_id': log['_doc_id'], 'name': fetchedName});
+            }
+          }
+        }
+      }
+
+      // --- Step 3: Backfill resolved names to Firestore (background) ---
+      if (toBackfill.isNotEmpty) {
+        _backfillEstablishmentNames(toBackfill);
+      }
+
+      return partiallyEnriched;
     } catch (e) {
       debugPrint('Fetch inspection history failed: $e');
       rethrow;
     }
   }
+
+  /// Writes resolved establishment names back to old Firestore inspection_log docs.
+  /// Called in the background — failures are non-fatal.
+  static void _backfillEstablishmentNames(
+      List<Map<String, dynamic>> items) async {
+    try {
+      final batch = _db.batch();
+      for (final item in items) {
+        final docId = item['doc_id'] as String?;
+        final name = item['name'] as String?;
+        if (docId == null || name == null) continue;
+        batch.update(
+          _db.collection('inspection_logs').doc(docId),
+          {'establishment_name': name},
+        );
+      }
+      await batch.commit().timeout(const Duration(seconds: 10));
+      debugPrint(
+          'Backfilled establishment_name for ${items.length} inspection log(s).');
+    } catch (e) {
+      debugPrint('Backfill establishment names failed (non-fatal): $e');
+    }
+  }
+
 
   // ─── Inspection Details ──────────────────────────────────────────────────────
 

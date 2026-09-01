@@ -48,6 +48,9 @@ class Establishment extends HiveObject {
   @HiveField(12)
   String? createdAt;
 
+  @HiveField(13)
+  final String? qrCodeId;
+
   Establishment({
     String? id,
     required this.name,
@@ -62,6 +65,7 @@ class Establishment extends HiveObject {
     this.categoryId,
     this.isSynced = true,
     this.createdAt,
+    this.qrCodeId,
   }) : id = (id == null || id.isEmpty) ? const Uuid().v4() : id;
 
   String get formattedAddress {
@@ -100,9 +104,14 @@ class Establishment extends HiveObject {
       categoryId: json['category_id']?.toString(),
       isSynced: json['is_synced'] == null ? true : (json['is_synced'] == 1 || json['is_synced'] == true),
       createdAt: json['created_at'] as String?,
+      qrCodeId: json['qr_code_id'] as String?,
     );
   }
 
+  /// Firestore-bound JSON. [categoryId], [barangay] and [qrCodeId] are only
+  /// included when set, so a write from this client never blanks out a value
+  /// the web admin app (or a future mobile screen) already stored — this
+  /// relies on [SyncService.updateEstablishment] using `SetOptions(merge: true)`.
   Map<String, dynamic> toJson() {
     dynamic addressPayload = address;
     if (address.trim().startsWith('{') && address.trim().endsWith('}')) {
@@ -116,12 +125,14 @@ class Establishment extends HiveObject {
       'category': category,
       'address': addressPayload,
       'owner_name': ownerName,
+      if (barangay != null) 'barangay': barangay,
       'personnel_count': personnelCount,
       'personnel_with_hc': personnelWithHc,
       'sanitary_permit_no': sanitaryPermitNo,
       'control_no': controlNo,
       'is_synced': isSynced ? 1 : 0,
       'created_at': createdAt ?? DateTime.now().toIso8601String(),
+      if (qrCodeId != null) 'qr_code_id': qrCodeId,
     };
     // Omit rather than write null/empty — this doc is written with
     // SetOptions(merge: true), so an omitted key leaves whatever the other

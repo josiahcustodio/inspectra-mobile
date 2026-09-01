@@ -128,6 +128,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
 
     final log = InspectionLog(
       establishmentId: widget.establishment.id,
+      establishmentName: widget.establishment.name, // saved to Firestore so any phone can display it
       inspectorName: AuthService.currentUser?.displayName ??
           AuthService.currentUser?.email ??
           'Inspector',

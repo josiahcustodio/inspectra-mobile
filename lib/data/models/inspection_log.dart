@@ -3,6 +3,11 @@ import 'package:uuid/uuid.dart';
 class InspectionLog {
   final String id;
   final String establishmentId;
+
+  /// The establishment name, saved directly so other phones don't need
+  /// a local Hive cache to resolve it. Falls back to 'Unknown' if absent.
+  final String? establishmentName;
+
   final String inspectorName;
   final int totalDemerits;
   final double percentageRating;
@@ -14,6 +19,7 @@ class InspectionLog {
   InspectionLog({
     String? id,
     required this.establishmentId,
+    this.establishmentName,
     required this.inspectorName,
     required this.totalDemerits,
     required this.percentageRating,
@@ -29,6 +35,7 @@ class InspectionLog {
     return InspectionLog(
       id: json['id'] as String?,
       establishmentId: json['establishment_id'] as String? ?? '',
+      establishmentName: json['establishment_name'] as String?,
       inspectorName: json['inspector_name'] as String? ?? '',
       totalDemerits: json['total_demerits'] as int? ?? 0,
       percentageRating: (json['percentage_rating'] as num?)?.toDouble() ?? 0.0,
@@ -46,6 +53,7 @@ class InspectionLog {
     return {
       'id': id,
       'establishment_id': establishmentId,
+      if (establishmentName != null) 'establishment_name': establishmentName,
       'inspector_name': inspectorName,
       'total_demerits': totalDemerits,
       'percentage_rating': percentageRating,

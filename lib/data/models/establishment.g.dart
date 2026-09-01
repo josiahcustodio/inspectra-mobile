@@ -30,13 +30,14 @@ class EstablishmentAdapter extends TypeAdapter<Establishment> {
       categoryId: fields[10] as String?,
       isSynced: fields[11] == null ? true : fields[11] as bool,
       createdAt: fields[12] as String?,
+      qrCodeId: fields[13] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Establishment obj) {
     writer
-      ..writeByte(13)
+      ..writeByte(14)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -62,7 +63,9 @@ class EstablishmentAdapter extends TypeAdapter<Establishment> {
       ..writeByte(11)
       ..write(obj.isSynced)
       ..writeByte(12)
-      ..write(obj.createdAt);
+      ..write(obj.createdAt)
+      ..writeByte(13)
+      ..write(obj.qrCodeId);
   }
 
   @override
