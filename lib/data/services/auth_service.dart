@@ -17,7 +17,8 @@ class AuthService {
     try {
       if (kIsWeb) {
         final GoogleAuthProvider googleProvider = GoogleAuthProvider();
-        await _auth.signInWithPopup(googleProvider);
+        final cred = await _auth.signInWithPopup(googleProvider);
+        if (cred.user != null) await ensureProfile(cred.user!);
         return true;
       } else {
         final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
@@ -34,7 +35,8 @@ class AuthService {
           idToken: googleAuth.idToken,
         );
 
-        await _auth.signInWithCredential(credential);
+        final userCred = await _auth.signInWithCredential(credential);
+        if (userCred.user != null) await ensureProfile(userCred.user!);
         return true;
       }
     } on FirebaseAuthMultiFactorException {
@@ -52,7 +54,9 @@ class AuthService {
   static Future<bool> signInWithEmailPassword(
       String email, String password) async {
     try {
-      await _auth.signInWithEmailAndPassword(email: email, password: password);
+      final cred = await _auth.signInWithEmailAndPassword(
+          email: email, password: password);
+      if (cred.user != null) await ensureProfile(cred.user!);
       return true;
     } on FirebaseAuthMultiFactorException {
       // Preserve e.resolver — handled one layer up in AuthProvider.
@@ -73,6 +77,7 @@ class AuthService {
           email: email, password: password);
       if (cred.user != null) {
         await cred.user!.updateDisplayName(firstName);
+        await ensureProfile(cred.user!);
         // MFA enrollment requires a verified email — send it right away.
         await cred.user!.sendEmailVerification();
       }
