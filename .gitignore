@@ -42,3 +42,11 @@ desktop.ini
 # IDE
 .idea/
 .vscode/
+
+# Device debug dumps
+crash_log.txt
+device_full.log
+logcat*.txt
+
+# Unrelated local tooling
+.agent/
