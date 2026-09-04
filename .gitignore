@@ -50,3 +50,10 @@ logcat*.txt
 
 # Unrelated local tooling
 .agent/
+
+# Firestore rules tests (Node tooling, isolated from the Flutter app)
+firestore-tests/node_modules/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+.firebase/
