@@ -1,5 +1,6 @@
 ﻿# Critical: Secret files - NEVER commit these
 serviceAccountKey.json
+bin/admin_actions.log
 *.pem
 *.p8
 *.p12
