@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/rating_scale.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/services/offline_service.dart';
 import '../../providers/pending_inspections_provider.dart';
@@ -284,11 +285,8 @@ class HomeScreen extends StatelessWidget {
                     final log = recent[index];
                     final name = provider.nameAt(index);
                     final pct = log.percentageRating;
-                    final color = pct >= 90
-                        ? AppTheme.primary
-                        : pct >= 70
-                            ? const Color(0xFFF59E0B)
-                            : const Color(0xFFEF4444);
+                    // [REF: RATING_SCALE]
+                    final color = RatingScale.colorOf(pct);
 
                     // Format date
                     String dateStr = log.inspectionDate;

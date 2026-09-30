@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../core/rating_scale.dart';
 import '../data/models/checklist_template.dart';
 
 class RatingProvider extends ChangeNotifier {
@@ -64,13 +65,7 @@ class RatingProvider extends ChangeNotifier {
   bool get isCompleted => score != null;
 
   // [REF: RATING_LABEL]
-  String get ratingLabel {
-    final currentScore = score;
-    if (currentScore == null) return 'Not Scored Yet';
-    
-    if (currentScore >= 90) return 'Excellent';
-    if (currentScore >= 70) return 'Very Satisfactory';
-    if (currentScore >= 50) return 'Satisfactory';
-    return 'Action Required';
-  }
+  /// Band label for the current score. The bands themselves live in
+  /// [RatingScale] so the app and the web dashboard cannot drift apart.
+  String get ratingLabel => RatingScale.labelOf(score);
 }

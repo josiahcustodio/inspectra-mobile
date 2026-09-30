@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/rating_scale.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/inspection_log.dart';
 import '../../providers/inspection_history_provider.dart';
@@ -112,23 +113,11 @@ class _HistoryCard extends StatelessWidget {
     }
   }
 
-  Color _ratingColor(double pct) {
-    if (pct >= 90) return const Color(0xFF10B981); // Emerald
-    if (pct >= 70) return const Color(0xFFF59E0B); // Amber
-    return const Color(0xFFEF4444); // Red
-  }
-
-  String _ratingLabel(double pct) {
-    if (pct >= 90) return 'Excellent';
-    if (pct >= 70) return 'Very Satisfactory';
-    if (pct >= 50) return 'Satisfactory';
-    return 'Action Required';
-  }
-
   @override
   Widget build(BuildContext context) {
-    final color = _ratingColor(log.percentageRating);
-    final label = _ratingLabel(log.percentageRating);
+    // [REF: RATING_SCALE] one shared band definition, no local copy
+    final color = RatingScale.colorOf(log.percentageRating);
+    final label = RatingScale.labelOf(log.percentageRating);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),

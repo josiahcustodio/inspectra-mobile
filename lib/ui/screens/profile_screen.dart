@@ -199,7 +199,7 @@ class ProfileScreen extends StatelessWidget {
       {
         'q': 'How is the rating score calculated?',
         'a':
-            'The score starts at 100. Each "Fail" answer deducts demerit points based on the weight of that checklist item. The final percentage determines the rating: ≥90 Excellent, ≥70 Very Satisfactory, ≥50 Satisfactory, <50 Action Required.',
+            'The score starts at 100. Each "Fail" answer deducts demerit points based on the weight of that checklist item. The final percentage determines the rating: 90–100 Excellent, 70–89 Very Satisfactory, 0–69 Satisfactory.',
       },
       {
         'q': 'Can I edit an establishment\'s details?',

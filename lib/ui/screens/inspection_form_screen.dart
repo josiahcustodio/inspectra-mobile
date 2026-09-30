@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/rating_scale.dart';
 import '../../data/models/checklist_template.dart';
 import '../../data/models/establishment.dart';
 import '../../data/models/inspection_log.dart';
@@ -272,16 +273,33 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
                   ],
                 )
               else
-                Text(
-                  '${provider.score}',
-                  style: const TextStyle(
-                    fontFamily: '.SF Pro Display',
-                    fontSize: 48,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF0F172A),
-                    height: 1.0,
-                    letterSpacing: -1.5,
-                  ),
+                // [REF: RATING_SCALE] the live score carries its band so the
+                // inspector sees the same label the dashboard will show.
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${provider.score}',
+                      style: TextStyle(
+                        fontFamily: '.SF Pro Display',
+                        fontSize: 48,
+                        fontWeight: FontWeight.w900,
+                        color: RatingScale.colorOf(provider.score),
+                        height: 1.0,
+                        letterSpacing: -1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      provider.ratingLabel,
+                      style: TextStyle(
+                        fontFamily: '.SF Pro Text',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: RatingScale.colorOf(provider.score),
+                      ),
+                    ),
+                  ],
                 ),
             ],
           ),

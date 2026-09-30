@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/rating_scale.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/services/sync_service.dart';
 
@@ -136,7 +137,9 @@ class _InspectionDetailsScreenState extends State<InspectionDetailsScreen> {
   Widget _buildContent(Color primary) {
     if (_logData == null) return const SizedBox.shrink();
 
-    final pct = (_logData!['percentage_rating'] as num?)?.toDouble() ?? 0.0;
+    // Left nullable on purpose: a log with no `percentage_rating` has not been
+    // scored, which RatingScale renders as "Not Scored Yet" rather than a red 0%.
+    final pct = (_logData!['percentage_rating'] as num?)?.toDouble();
     final demerits = _logData!['total_demerits'] as int? ?? 0;
     final inspector = _logData!['inspector_name'] as String? ?? 'Unknown';
     final remarks = _logData!['remarks'] as String?;
@@ -172,8 +175,13 @@ class _InspectionDetailsScreenState extends State<InspectionDetailsScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _buildStatItem('Rating', '${pct.toStringAsFixed(1)}%',
-                      pct >= 70 ? Colors.green : Colors.red),
+                  // [REF: RATING_SCALE] value, caption and band all agree
+                  _buildStatItem(
+                    'Rating',
+                    pct == null ? '—' : '${pct.toStringAsFixed(1)}%',
+                    RatingScale.colorOf(pct),
+                    band: RatingScale.labelOf(pct),
+                  ),
                   _buildStatItem(
                       'Demerits', '$demerits', Colors.orange.shade700),
                 ],
@@ -222,7 +230,9 @@ class _InspectionDetailsScreenState extends State<InspectionDetailsScreen> {
     );
   }
 
-  Widget _buildStatItem(String label, String value, Color color) {
+  /// [band], when given, is printed under the caption in the value's colour —
+  /// used by the rating so the number, its colour and its band name sit together.
+  Widget _buildStatItem(String label, String value, Color color, {String? band}) {
     return Column(
       children: [
         Text(
@@ -240,6 +250,15 @@ class _InspectionDetailsScreenState extends State<InspectionDetailsScreen> {
             color: Colors.grey.shade600,
           ),
         ),
+        if (band != null)
+          Text(
+            band,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
       ],
     );
   }
