@@ -22,6 +22,7 @@ class InspectionHistoryProvider extends ChangeNotifier {
     return _establishmentNames[index];
   }
 
+  // [REF: HISTORY_MERGE_LOCAL_REMOTE]
   Future<void> fetchHistory({int limit = 50}) async {
     if (_isLoading) return;
     _isLoading = true;
@@ -74,7 +75,8 @@ class InspectionHistoryProvider extends ChangeNotifier {
       _establishmentNames = uniqueRaw
           .map((e) => e['establishment_name'] as String? ?? 'Unknown')
           .toList();
-      _error = null;
+      // Don't clear _error here: if the remote fetch failed above, the
+      // "offline and cached logs only" warning must survive to the UI.
     } catch (e) {
       _error = 'Could not load history. Check your connection.';
       debugPrint('InspectionHistoryProvider error: $e');

@@ -25,6 +25,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
     super.initState();
     // Poll every few seconds so the app notices as soon as the user
     // clicks the link, without requiring a manual "I've verified" tap.
+    // [REF: EMAIL_VERIFY_POLLING]
     _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
       Provider.of<AuthProvider>(context, listen: false).refreshEmailVerified();
     });

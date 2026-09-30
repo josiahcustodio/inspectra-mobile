@@ -13,6 +13,7 @@ class AuthService {
 
   /// Signs in the user with Google.
   /// Returns true on success, false on failure.
+  // [REF: AUTH_SIGNIN_GOOGLE]
   static Future<bool> signInWithGoogle() async {
     try {
       if (kIsWeb) {
@@ -51,6 +52,7 @@ class AuthService {
     }
   }
 
+  // [REF: AUTH_SIGNIN_EMAIL]
   static Future<bool> signInWithEmailPassword(
       String email, String password) async {
     try {
@@ -70,6 +72,7 @@ class AuthService {
     }
   }
 
+  // [REF: AUTH_SIGNUP_EMAIL]
   static Future<bool> signUpWithEmailPassword(
       String email, String password, String firstName) async {
     try {
@@ -154,6 +157,7 @@ class AuthService {
   ///
   /// Matches firestore.rules: a user may only ever self-create their OWN
   /// profile with role 'officer' — never 'admin'. Returns the resolved role.
+  // [REF: PROFILE_BOOTSTRAP]
   static Future<String> ensureProfile(User user) async {
     final ref = FirebaseFirestore.instance.collection('profiles').doc(user.uid);
     try {
@@ -174,6 +178,7 @@ class AuthService {
   }
 
   /// Maps FirebaseAuthException error codes to clean, user-facing messages.
+  // [REF: AUTH_ERROR_MESSAGES]
   static Exception _friendlyAuthError(FirebaseAuthException e) {
     switch (e.code) {
       case 'user-not-found':

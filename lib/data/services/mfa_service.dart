@@ -18,6 +18,7 @@ class MfaService {
   }
 
   /// Starts enrollment: opens a fresh MFA session and generates a TOTP secret.
+  // [REF: MFA_ENROLL_START]
   static Future<TotpSecret> startEnrollment(User user) async {
     try {
       final session = await user.multiFactor.getSession();
@@ -38,6 +39,7 @@ class MfaService {
   }
 
   /// Verifies [code] against [secret] and enrolls it as the user's second factor.
+  // [REF: MFA_ENROLL_CONFIRM]
   static Future<void> completeEnrollment({
     required User user,
     required TotpSecret secret,
@@ -58,6 +60,7 @@ class MfaService {
   }
 
   /// Resolves an in-progress sign-in using [resolver] and the entered [code].
+  // [REF: MFA_SIGNIN_CHALLENGE]
   static Future<UserCredential> completeSignIn({
     required MultiFactorResolver resolver,
     required String code,

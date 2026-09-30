@@ -28,6 +28,7 @@ class _InspectionDetailsScreenState extends State<InspectionDetailsScreen> {
     _fetchDetails();
   }
 
+  // [REF: INSPECTION_DETAILS_VIEW]
   Future<void> _fetchDetails() async {
     try {
       final data = await SyncService.fetchInspectionDetails(widget.logId);

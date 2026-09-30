@@ -4,10 +4,8 @@ import 'package:flutter/cupertino.dart';
 import '../../data/models/establishment.dart';
 import '../../data/services/offline_service.dart';
 import '../../core/theme/app_theme.dart';
-import '../screens/add_establishment_screen.dart';
-import '../screens/inspection_form_screen.dart';
-import '../screens/qr_scanner_screen.dart';
 
+// [REF: NEW_INSPECTION_MODAL]
 class NewInspectionModal extends StatefulWidget {
   final ThemeData theme;
 
@@ -28,6 +26,7 @@ class _NewInspectionModalState extends State<NewInspectionModal> {
     _searchController.addListener(_onSearchChanged);
   }
 
+  // [REF: MODAL_ESTABLISHMENT_SEARCH]
   void _onSearchChanged() {
     final query = _searchController.text.toLowerCase();
     if (query.isEmpty) {

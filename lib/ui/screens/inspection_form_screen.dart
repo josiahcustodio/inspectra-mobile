@@ -57,8 +57,24 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
     }
   }
 
+  // [REF: PHOTO_EVIDENCE_PICKER]
+  /// Captures one evidence photo and compresses it on the device before it ever
+  /// touches the network.
+  ///
+  /// A modern phone camera produces a 4–12 MB JPEG. Inspectors work on mobile
+  /// data in the field, and every one of those megabytes is paid for twice —
+  /// once on their connection, once in Firebase Storage egress. 1600px at 70%
+  /// quality is still far more detail than a sanitary deficiency photo needs
+  /// and typically lands around 200–400 KB, a 10–20x reduction.
+  ///
+  /// image_picker does this resize/re-encode natively on the platform side, so
+  /// there is no extra Dart package and no main-thread cost.
   Future<void> _pickImage() async {
-    final pickedFile = await _picker.pickImage(source: ImageSource.camera);
+    final pickedFile = await _picker.pickImage(
+      source: ImageSource.camera,
+      maxWidth: 1600,
+      imageQuality: 70,
+    );
     if (pickedFile != null) {
       setState(() {
         _evidenceImage = File(pickedFile.path);
@@ -66,6 +82,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
     }
   }
 
+  // [REF: INSPECTION_SUBMIT]
   Future<void> _submitForm() async {
     final ratingProvider = Provider.of<RatingProvider>(context, listen: false);
 
@@ -96,12 +113,16 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
       }
     }
 
-    // Simulate uploading photo
+    // Try to upload the evidence photo now. If this fails (offline, or the
+    // upload itself errors) photoUrl stays null and we keep the on-device path
+    // instead — SyncService retries the upload when the queued inspection
+    // syncs, so the photo is no longer silently lost.
     String? photoUrl;
     if (_evidenceImage != null) {
-      final fileName =
-          '${widget.establishment.id}_photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      photoUrl = await SyncService.uploadImage(_evidenceImage!, fileName);
+      photoUrl = await SyncService.uploadImage(
+        _evidenceImage!,
+        SyncService.evidencePath(widget.establishment.id),
+      );
     }
 
     final List<Map<String, dynamic>> resultsArray = [];
@@ -136,36 +157,54 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
       percentageRating: (ratingProvider.score ?? 0).toDouble(),
       remarks: finalRemarks,
       photoEvidenceUrl: photoUrl,
+      // Only stage the local path when the upload did not already succeed.
+      localPhotoPath:
+          (photoUrl == null && _evidenceImage != null) ? _evidenceImage!.path : null,
       results: resultsArray,
     );
 
     final success = await SyncService.submitInspectionLog(log);
 
-    // Results are now embedded in log.toJson() directly.
+    // Results are embedded in log.toJson() directly.
+
+    // A photo that was captured but not uploaded still counts as unfinished
+    // work, even when the Firestore write itself succeeded (Storage can fail
+    // while Firestore is reachable). Re-queueing is safe and cheap: the sync
+    // pass writes to the same document id with merge:true, so the retry
+    // uploads the photo and patches the URL in without duplicating anything.
+    final photoStillPending = _evidenceImage != null && photoUrl == null;
 
     setState(() {
       _isSubmitting = false;
     });
 
-    if (success) {
+    if (success && !photoStillPending) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Submitted Successfully!')));
         context.pop(); // Go back home
       }
-    } else {
-      // Save to offline queue
-      final jsonStr = jsonEncode(log.toJson());
-      await OfflineService.inspectionsQueueBox.put(log.id, jsonStr);
+      return;
+    }
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Saved offline. Will sync later.')));
-        context.pop(); // Go back home even if offline
-      }
+    // Save to the offline queue. toQueueJson keeps the on-device photo path so
+    // the evidence survives until it can be uploaded.
+    final jsonStr = jsonEncode(log.toQueueJson());
+    await OfflineService.inspectionsQueueBox.put(log.id, jsonStr);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success
+              ? 'Submitted. Photo will upload when you have signal.'
+              : 'Saved offline. Will sync later.'),
+        ),
+      );
+      context.pop(); // Go back home even if offline
     }
   }
 
+  // [REF: LIVE_SCORE_HEADER]
   Widget _buildStickyScoreHeader() {
     return Consumer<RatingProvider>(
       builder: (context, provider, child) {
@@ -251,6 +290,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
     );
   }
 
+  // [REF: CHECKLIST_RENDER]
   Widget _buildChecklist() {
     if (_templates.isEmpty) {
       return const Padding(

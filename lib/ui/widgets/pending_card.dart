@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../providers/pending_inspections_provider.dart';
 
+// [REF: PENDING_CARD]
 class PendingCard extends StatelessWidget {
   final PendingInspectionsProvider provider;
   final ThemeData theme;
@@ -129,6 +130,7 @@ class PendingCard extends StatelessWidget {
     );
   }
 
+  // [REF: PENDING_QUEUE_MODAL]
   void _showPendingModal(BuildContext context, PendingInspectionsProvider provider) {
     showModalBottomSheet(
       context: context,

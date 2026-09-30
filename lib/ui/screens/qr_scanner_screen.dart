@@ -4,8 +4,6 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../data/services/offline_service.dart';
 import '../../data/models/establishment.dart';
-import 'add_establishment_screen.dart';
-import 'inspection_form_screen.dart';
 
 class QRScannerScreen extends StatefulWidget {
   const QRScannerScreen({super.key});
@@ -27,6 +25,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     _searchController.addListener(_onSearchChanged);
   }
 
+  // [REF: QR_MANUAL_SEARCH]
   void _onSearchChanged() {
     final query = _searchController.text.toLowerCase();
     if (query.isEmpty) {
@@ -64,6 +63,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     super.dispose();
   }
 
+  // [REF: SCAN_QR_CODE]
   void _onDetect(BarcodeCapture capture) {
     if (_isNavigating) return;
     for (final barcode in capture.barcodes) {

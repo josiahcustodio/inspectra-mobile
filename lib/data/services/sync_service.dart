@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
-import '../models/checklist_template.dart';
 import '../models/inspection_log.dart';
 import '../models/establishment.dart';
 import 'offline_service.dart';
@@ -14,6 +13,16 @@ class SyncService {
 
   // ─── Storage ────────────────────────────────────────────────────────────────
 
+  /// Builds the Storage path for an evidence photo.
+  ///
+  /// Shape: `inspection_evidence/{establishmentId}/{timestamp}.jpg`.
+  /// The folder prefix matters — storage.rules grants write access to
+  /// `inspection_evidence/**` specifically, which would be impossible to
+  /// express if photos were dumped in the bucket root as they used to be.
+  static String evidencePath(String establishmentId) =>
+      'inspection_evidence/$establishmentId/${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+  // [REF: PHOTO_UPLOAD]
   /// Uploads a [File] to Firebase Storage at [path] and returns its public URL.
   static Future<String?> uploadImage(File imageFile, String path) async {
     try {
@@ -38,9 +47,49 @@ class SyncService {
     }
   }
 
+  // [REF: OFFLINE_PHOTO_RETRY]
+  /// Uploads an evidence photo that was captured offline and staged on disk.
+  ///
+  /// Mutates [data] in place: on success it fills in `photo_evidence_url` and
+  /// drops `local_photo_path`, so the record written to Firestore never
+  /// carries a device-local file path.
+  ///
+  /// Returns false only when the photo genuinely still needs another attempt,
+  /// which keeps the inspection in the queue. If the staged file has been
+  /// deleted from the device (cache cleared, OS reclaimed temp space) the
+  /// photo is unrecoverable, so this returns true and lets the inspection sync
+  /// without it — holding the whole record hostage to a file that no longer
+  /// exists would be worse.
+  static Future<bool> _uploadStagedPhoto(Map<String, dynamic> data) async {
+    final localPath = data['local_photo_path'] as String?;
+    final existingUrl = data['photo_evidence_url'] as String?;
+
+    if (localPath == null || localPath.isEmpty) return true;
+    if (existingUrl != null && existingUrl.isNotEmpty) {
+      data.remove('local_photo_path');
+      return true;
+    }
+
+    final file = File(localPath);
+    if (!file.existsSync()) {
+      debugPrint('Staged photo missing from device, syncing without it: $localPath');
+      data.remove('local_photo_path');
+      return true;
+    }
+
+    final estId = data['establishment_id'] as String? ?? 'unknown';
+    final url = await uploadImage(file, evidencePath(estId));
+    if (url == null) return false; // still offline — retry on the next sync
+
+    data['photo_evidence_url'] = url;
+    data.remove('local_photo_path');
+    return true;
+  }
+
   // ─── Inspection Logs ────────────────────────────────────────────────────────
 
   /// Submits a single [InspectionLog] to Firestore.
+  // [REF: INSPECTION_SUBMIT_REMOTE]
   static Future<bool> submitInspectionLog(InspectionLog log) async {
     try {
       await _db
@@ -55,6 +104,7 @@ class SyncService {
   }
 
   /// Syncs all pending inspections from the local Hive queue to Firestore.
+  // [REF: OFFLINE_SYNC_QUEUE]
   static Future<bool> syncPendingInspections() async {
     final box = OfflineService.inspectionsQueueBox;
     if (box.isEmpty) return true;
@@ -72,6 +122,16 @@ class SyncService {
         // Patch old invalid UUID format
         if (data['id'] != null && data['id'].toString().contains('_')) {
           data['id'] = null;
+        }
+
+        // Upload any photo that was captured while offline, before writing the
+        // log. If the upload can't happen yet, leave this item queued so both
+        // the record and its evidence are retried together.
+        final photoReady = await _uploadStagedPhoto(data);
+        if (!photoReady) {
+          debugPrint('Photo for queue item $key still pending upload; retrying later.');
+          allSuccess = false;
+          continue;
         }
 
         final log = InspectionLog.fromJson(data);
@@ -95,6 +155,7 @@ class SyncService {
   }
 
   /// Syncs a single pending inspection by Hive [key] to Firestore.
+  // [REF: SYNC_SINGLE_ITEM]
   static Future<bool> syncSingleInspection(String key) async {
     final box = OfflineService.inspectionsQueueBox;
     final jsonString = box.get(key);
@@ -107,6 +168,13 @@ class SyncService {
       // Patch old invalid UUID format
       if (data['id'] != null && data['id'].toString().contains('_')) {
         data['id'] = null;
+      }
+
+      // Same photo-first ordering as syncPendingInspections.
+      final photoReady = await _uploadStagedPhoto(data);
+      if (!photoReady) {
+        debugPrint('Photo for queue item $key still pending upload; retrying later.');
+        return false;
       }
 
       final log = InspectionLog.fromJson(data);
@@ -174,6 +242,7 @@ class SyncService {
   // Removed submitInspectionResults since results are embedded.
 
   /// Syncs all unsynced establishments from local Hive to Firestore.
+  // [REF: ESTABLISHMENT_SYNC_QUEUE]
   static Future<bool> syncPendingEstablishments() async {
     final localEstablishments = OfflineService.getLocalEstablishments();
     final pendingEsts = localEstablishments.where((e) => !e.isSynced).toList();
@@ -211,6 +280,7 @@ class SyncService {
   /// actual `categories/{id}` Firestore doc id and must be used verbatim as
   /// `category_id` when writing establishments — it is not a sequential
   /// index.
+  // [REF: CATEGORY_LOOKUP]
   static Future<List<Map<String, String>>> fetchCategories() async {
     try {
       final snapshot = await _db.collection('categories').get();
@@ -243,6 +313,7 @@ class SyncService {
   ///      for any phone with an empty Hive cache (guaranteed resolution).
   /// Also backfills resolved names back to old log docs so every phone
   /// benefits going forward (one-time self-healing per device).
+  // [REF: INSPECTION_HISTORY_FETCH]
   static Future<List<Map<String, dynamic>>> fetchInspectionHistory({
     int limit = 50,
   }) async {
@@ -348,6 +419,7 @@ class SyncService {
 
   /// Writes resolved establishment names back to old Firestore inspection_log docs.
   /// Called in the background — failures are non-fatal.
+  // [REF: ESTABLISHMENT_NAME_BACKFILL]
   static void _backfillEstablishmentNames(
       List<Map<String, dynamic>> items) async {
     try {
@@ -375,6 +447,7 @@ class SyncService {
   /// Fetches complete inspection details.
   /// Firestore does not support joins, so inspection_results are stored as
   /// a sub-collection or embedded array in the inspection_log document.
+  // [REF: INSPECTION_DETAILS_FETCH]
   static Future<Map<String, dynamic>> fetchInspectionDetails(
       String logId) async {
     try {

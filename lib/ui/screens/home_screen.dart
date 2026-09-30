@@ -130,6 +130,7 @@ class HomeScreen extends StatelessWidget {
 
   // ─── Bento Layout ─────────────────────────────────────────────────────────────
 
+  // [REF: HOME_STATS]
   Widget _buildBentoLayout(BuildContext context, ThemeData theme, int estCount) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -198,6 +199,7 @@ class HomeScreen extends StatelessWidget {
 
   // ─── Recent Activity ──────────────────────────────────────────────────────────
 
+  // [REF: RECENT_ACTIVITY]
   Widget _buildRecentActivity(BuildContext context, ThemeData theme) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -210,7 +212,8 @@ class HomeScreen extends StatelessWidget {
               Text('Recent Activity', style: theme.textTheme.titleLarge),
               TextButton(
                 onPressed: () {
-                  MainNavigationScreen.tabNotifier.value = 3;
+                  // History tab (branch order: 0 Home, 1 Establishments, 2 History, 3 Profile)
+                  MainNavigationScreen.tabNotifier.value = 2;
                 },
                 style: TextButton.styleFrom(
                   foregroundColor: theme.colorScheme.primary,

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
 
 import '../../providers/auth_provider.dart';
 import '../../ui/screens/login_screen.dart';
@@ -32,6 +31,7 @@ GoRouter createAppRouter(AuthProvider authProvider) {
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/sync',
     refreshListenable: authProvider,
+    // [REF: AUTH_ROUTE_GUARD]
     redirect: (BuildContext context, GoRouterState state) {
       final bool isAuthenticated = authProvider.isAuthenticated;
       final String loc = state.matchedLocation;
@@ -150,6 +150,7 @@ GoRouter createAppRouter(AuthProvider authProvider) {
         },
       ),
       
+      // [REF: NAV_SHELL]
       StatefulShellRoute.indexedStack(
         builder: (BuildContext context, GoRouterState state, StatefulNavigationShell navigationShell) {
           return MainNavigationScreen(navigationShell: navigationShell);

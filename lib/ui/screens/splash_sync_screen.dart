@@ -1,7 +1,6 @@
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import '../../data/services/offline_service.dart';
-import 'main_navigation_screen.dart';
 
 class SplashSyncScreen extends StatefulWidget {
   const SplashSyncScreen({super.key});
@@ -19,6 +18,7 @@ class _SplashSyncScreenState extends State<SplashSyncScreen> {
     _initializeApp();
   }
 
+  // [REF: STARTUP_SYNC]
   Future<void> _initializeApp() async {
     try {
       setState(() {

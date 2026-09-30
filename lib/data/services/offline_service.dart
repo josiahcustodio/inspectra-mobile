@@ -14,6 +14,7 @@ class OfflineService {
   static Box<String> get inspectionsQueueBox =>
       Hive.box<String>(inspectionsQueueBoxName);
 
+  // [REF: OFFLINE_CACHE_INIT]
   static Future<void> init() async {
     Hive.registerAdapter(EstablishmentAdapter());
     Hive.registerAdapter(ChecklistTemplateAdapter());
@@ -36,6 +37,7 @@ class OfflineService {
 
   /// Syncs master data (establishments, templates, categories) from Firestore
   /// into local Hive boxes for offline use.
+  // [REF: MASTER_DATA_SYNC]
   static Future<void> syncData() async {
     final db = FirebaseFirestore.instance;
 
@@ -150,6 +152,7 @@ class OfflineService {
     await Hive.box<Establishment>(establishmentsBoxName).delete(id);
   }
 
+  // [REF: CHECKLIST_TEMPLATE_LOOKUP]
   static List<ChecklistTemplate> getLocalTemplatesByCategory(String category) {
     return Hive.box<ChecklistTemplate>(templatesBoxName)
         .values

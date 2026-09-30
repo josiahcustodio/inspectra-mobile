@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import '../../data/services/mfa_service.dart';
 import '../../providers/auth_provider.dart';
 
+// [REF: PROFILE_SCREEN]
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 

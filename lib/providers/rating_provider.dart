@@ -7,9 +7,8 @@ class RatingProvider extends ChangeNotifier {
 
   final Map<String, int> _weights = {};
 
-  /// Atomically resets all state and initializes weights from [templates].
-  /// Prefer this over calling reset() + initWeights() separately to avoid
-  /// a partially-initialized state window during rapid navigation.
+  /// Atomically resets all state and initializes weights from [templates],
+  /// so there is no partially-initialized state window during rapid navigation.
   void init(List<ChecklistTemplate> templates) {
     answers.clear();
     itemNotes.clear();
@@ -41,12 +40,7 @@ class RatingProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void initWeights(List<ChecklistTemplate> templates) {
-    for (var t in templates) {
-      _weights[t.id] = t.weight;
-    }
-  }
-
+  // [REF: SCORING_ENGINE]
   int get totalDemerits {
     int totalPenalty = 0;
     answers.forEach((itemId, ans) {
@@ -69,6 +63,7 @@ class RatingProvider extends ChangeNotifier {
 
   bool get isCompleted => score != null;
 
+  // [REF: RATING_LABEL]
   String get ratingLabel {
     final currentScore = score;
     if (currentScore == null) return 'Not Scored Yet';

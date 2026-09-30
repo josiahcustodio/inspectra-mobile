@@ -145,6 +145,7 @@ class ChecklistItemCard extends StatelessWidget {
     );
   }
 
+  // [REF: PASS_FAIL_NA_CONTROL]
   Widget _buildSegmentedControl(BuildContext context, String? currentAnswer, RatingProvider provider) {
     final bool isPass = currentAnswer == 'Pass';
     final bool isFail = currentAnswer == 'Fail';

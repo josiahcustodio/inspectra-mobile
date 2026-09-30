@@ -27,6 +27,7 @@ class _MfaVerifyScreenState extends State<MfaVerifyScreen> {
     super.dispose();
   }
 
+  // [REF: MFA_VERIFY_SCREEN]
   Future<void> _verify(AuthProvider authProvider) async {
     final code = _codeController.text.trim();
     if (code.length != 6) {

@@ -14,6 +14,16 @@ class InspectionLog {
   final String? remarks;
   final String inspectionDate;
   final String? photoEvidenceUrl;
+
+  /// On-device path of an evidence photo that has not been uploaded yet.
+  ///
+  /// Local-only staging: it is written into the Hive offline queue by
+  /// [toQueueJson] but NEVER into Firestore by [toJson], since a file path on
+  /// one inspector's phone is meaningless to anyone else. SyncService uploads
+  /// the file from this path on the next successful sync and fills in
+  /// [photoEvidenceUrl].
+  final String? localPhotoPath;
+
   final List<Map<String, dynamic>> results;
 
   InspectionLog({
@@ -26,6 +36,7 @@ class InspectionLog {
     this.remarks,
     String? inspectionDate,
     this.photoEvidenceUrl,
+    this.localPhotoPath,
     List<Map<String, dynamic>>? results,
   })  : id = (id == null || id.isEmpty) ? const Uuid().v4() : id,
         inspectionDate = inspectionDate ?? DateTime.now().toIso8601String(),
@@ -42,6 +53,7 @@ class InspectionLog {
       remarks: json['remarks'] as String?,
       inspectionDate: json['inspection_date'] as String?,
       photoEvidenceUrl: json['photo_evidence_url'] as String?,
+      localPhotoPath: json['local_photo_path'] as String?,
       results: (json['results'] as List?)
               ?.map((e) => Map<String, dynamic>.from(e as Map))
               .toList() ??
@@ -49,6 +61,7 @@ class InspectionLog {
     );
   }
 
+  // [REF: INSPECTION_LOG_MODEL_WRITE]
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -62,5 +75,17 @@ class InspectionLog {
       'photo_evidence_url': photoEvidenceUrl,
       'results': results,
     };
+  }
+
+  // [REF: OFFLINE_PHOTO_STAGING]
+  /// The offline-queue representation. Identical to [toJson] plus
+  /// [localPhotoPath], so a queued inspection remembers which photo on this
+  /// device still needs uploading. Only ever written to Hive, never Firestore.
+  Map<String, dynamic> toQueueJson() {
+    final json = toJson();
+    if (localPhotoPath != null && localPhotoPath!.isNotEmpty) {
+      json['local_photo_path'] = localPhotoPath;
+    }
+    return json;
   }
 }

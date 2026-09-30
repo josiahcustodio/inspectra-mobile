@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/inspection_log.dart';
 import '../../providers/inspection_history_provider.dart';
-import 'inspection_details_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -87,6 +86,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
 // ─── History Card ─────────────────────────────────────────────────────────────
 
+// [REF: HISTORY_CARD]
 class _HistoryCard extends StatelessWidget {
   final InspectionLog log;
   final String establishmentName;

@@ -1,0 +1,62 @@
+rules_version = '2';
+
+// Firebase Storage security rules for inspectra-firebase.
+//
+// Mirrors the role model in firestore.rules: only a signed-in user who has a
+// profiles/{uid} document with role 'officer' or 'admin' may touch anything.
+// Storage rules can read Firestore, so the role lives in exactly one place
+// rather than being duplicated here.
+//
+// Deploy with:  firebase deploy --only storage
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Guarded with exists() for the same reason as firestore.rules: a brand-new
+    // signed-in user has no profile document yet, and reading .role off a
+    // missing document errors the whole rule instead of cleanly returning "no
+    // role".
+    function role() {
+      return firestore.exists(/databases/(default)/documents/profiles/$(request.auth.uid))
+        ? firestore.get(/databases/(default)/documents/profiles/$(request.auth.uid)).data.role
+        : null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && role() == 'admin';
+    }
+
+    function isAuthorized() {
+      return isAuthenticated() && (role() == 'admin' || role() == 'officer');
+    }
+
+    // Belt-and-braces on top of the client-side compression in
+    // inspection_form_screen.dart (_pickImage caps width at 1600px and quality
+    // at 70%, which lands well under 1 MB). A compressed field photo should
+    // never approach 5 MB, so anything that does is either a bug or an abuse
+    // attempt and is rejected before it costs bandwidth.
+    function isValidEvidenceImage() {
+      return request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Inspection evidence photos, written by SyncService.uploadImage.
+    // Path shape: inspection_evidence/{establishmentId}/{timestamp}.jpg
+    match /inspection_evidence/{establishmentId}/{fileName} {
+      allow read: if isAuthorized();
+      allow create: if isAuthorized() && isValidEvidenceImage();
+      // Evidence is an audit record — an officer may add one but may not
+      // rewrite or destroy one after the fact. Only an admin can.
+      allow update, delete: if isAdmin();
+    }
+
+    // Everything else is denied. Add an explicit match block above this one
+    // before writing to any new path.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

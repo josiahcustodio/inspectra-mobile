@@ -11,6 +11,7 @@ import 'providers/pending_inspections_provider.dart';
 import 'providers/inspection_history_provider.dart';
 import 'providers/auth_provider.dart';
 import 'core/router/app_router.dart';
+// [REF: APP_BOOTSTRAP]
 void main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();

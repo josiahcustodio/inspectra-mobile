@@ -1,8 +1,6 @@
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import '../../data/services/offline_service.dart';
-import 'add_establishment_screen.dart';
-import 'edit_establishment_screen.dart';
 
 class EstablishmentsScreen extends StatefulWidget {
   const EstablishmentsScreen({super.key});
@@ -19,6 +17,7 @@ class _EstablishmentsScreenState extends State<EstablishmentsScreen> {
     final theme = Theme.of(context);
     final primary = theme.colorScheme.primary;
     
+    // [REF: ESTABLISHMENT_LIST]
     var establishments = OfflineService.getLocalEstablishments();
     if (_searchQuery.isNotEmpty) {
       final query = _searchQuery.toLowerCase();

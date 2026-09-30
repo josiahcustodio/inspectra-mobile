@@ -42,6 +42,7 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
     super.dispose();
   }
 
+  // [REF: MFA_ENROLL_SCREEN]
   Future<void> _startEnrollment() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final user = authProvider.user;
@@ -76,6 +77,7 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
     }
   }
 
+  // [REF: MFA_ENROLL_VERIFY]
   Future<void> _verify() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final user = authProvider.user;

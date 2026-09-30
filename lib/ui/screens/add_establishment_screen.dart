@@ -73,6 +73,7 @@ class _AddEstablishmentScreenState extends State<AddEstablishmentScreen> {
     }
   }
 
+  // [REF: BARANGAY_PICKER]
   Future<void> _loadBarangays() async {
     try {
       final String jsonString = await rootBundle.loadString('assets/data/batangas_psgc.json');
@@ -117,6 +118,7 @@ class _AddEstablishmentScreenState extends State<AddEstablishmentScreen> {
     super.dispose();
   }
 
+  // [REF: ESTABLISHMENT_FORM_SAVE]
   Future<void> _submitForm() async {
     if (!_formKey.currentState!.validate()) return;
     if (_category == null) {
@@ -204,6 +206,7 @@ class _AddEstablishmentScreenState extends State<AddEstablishmentScreen> {
     }
   }
 
+  // [REF: ESTABLISHMENT_DELETE]
   Future<void> _deleteEstablishment() async {
     final est = widget.establishment;
     if (est == null) return;
@@ -655,6 +658,7 @@ class _AddEstablishmentScreenState extends State<AddEstablishmentScreen> {
                                         ),
                                       ],
                                     ),
+                                    // [REF: QR_CODE_GENERATOR]
                                     child: QrImageView(
                                       data: widget.establishment!.id,
                                       version: QrVersions.auto,

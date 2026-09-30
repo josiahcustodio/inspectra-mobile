@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 
+// [REF: LOGIN_SCREEN]
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -407,6 +408,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  // [REF: FORGOT_PASSWORD_DIALOG]
   void _showForgotPasswordDialog(BuildContext context) {
     final emailController = TextEditingController(text: _emailController.text);
     showDialog(
@@ -461,6 +463,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  // [REF: SIGNUP_DIALOG]
   void _showSignUpDialog(BuildContext context) {
     final nameController = TextEditingController();
     final emailController = TextEditingController();

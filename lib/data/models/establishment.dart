@@ -112,6 +112,7 @@ class Establishment extends HiveObject {
   /// included when set, so a write from this client never blanks out a value
   /// the web admin app (or a future mobile screen) already stored — this
   /// relies on [SyncService.updateEstablishment] using `SetOptions(merge: true)`.
+  // [REF: ESTABLISHMENT_MODEL_WRITE]
   Map<String, dynamic> toJson() {
     dynamic addressPayload = address;
     if (address.trim().startsWith('{') && address.trim().endsWith('}')) {
@@ -125,7 +126,6 @@ class Establishment extends HiveObject {
       'category': category,
       'address': addressPayload,
       'owner_name': ownerName,
-      if (barangay != null) 'barangay': barangay,
       'personnel_count': personnelCount,
       'personnel_with_hc': personnelWithHc,
       'sanitary_permit_no': sanitaryPermitNo,

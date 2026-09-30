@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+// [REF: DESIGN_TOKENS]
 class AppTheme {
   static const Color primary = Color(0xFF10B981);
   static const Color primaryDark = Color(0xFF059669);

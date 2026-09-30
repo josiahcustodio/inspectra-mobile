@@ -32,6 +32,7 @@ class AuthProvider extends ChangeNotifier {
     _init();
   }
 
+  // [REF: AUTH_STATE_LISTENER]
   void _init() {
     // Listen to Firebase auth state changes
     AuthService.authStateChanges.listen((User? firebaseUser) async {

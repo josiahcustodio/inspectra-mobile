@@ -48,6 +48,7 @@ class PendingInspectionsProvider extends ChangeNotifier {
     return OfflineService.inspectionsQueueBox.toMap().entries.toList();
   }
 
+  // [REF: PENDING_COUNTER]
   void _loadPendingCount() {
     int inspectionCount = OfflineService.inspectionsQueueBox.length;
     int estCount = OfflineService.getLocalEstablishments().where((e) => !e.isSynced).length;
@@ -55,6 +56,7 @@ class PendingInspectionsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // [REF: SYNC_ALL_TRIGGER]
   Future<bool> submitAll() async {
     if (isEmpty || _isSyncing) return false;
 

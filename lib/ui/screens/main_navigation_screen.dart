@@ -3,11 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/theme/app_theme.dart';
-import 'home_screen.dart';
-import 'establishments_screen.dart';
-import 'qr_scanner_screen.dart';
-import 'history_screen.dart';
-import 'profile_screen.dart';
 
 import 'package:go_router/go_router.dart';
 
@@ -57,9 +52,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final primary = Theme.of(context).colorScheme.primary;
-    final secondary = Theme.of(context).colorScheme.secondary;
-
     return Scaffold(
       extendBody: true, // Required for bottom app bar notch
       body: widget.navigationShell,
@@ -77,7 +69,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       bottomNavigationBar: _BottomNav(
         currentIndex: widget.navigationShell.currentIndex,
         onTap: _onTap,
-        primary: primary,
       ),
     );
   }
@@ -86,12 +77,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 class _BottomNav extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
-  final Color primary;
 
   const _BottomNav({
     required this.currentIndex,
     required this.onTap,
-    required this.primary,
   });
 
   @override
@@ -127,6 +116,7 @@ class _BottomNav extends StatelessWidget {
     );
   }
 
+  // [REF: BOTTOM_NAV_TABS]
   Widget _buildTab(int index, IconData icon, IconData activeIcon, String label) {
     final isActive = currentIndex == index;
     const activeColor = AppTheme.secondary; // Slate for active tabs

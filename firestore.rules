@@ -64,12 +64,19 @@ service cloud.firestore {
       allow create, update: if isAuthorized();
       allow delete: if isAdmin();
 
-      // Per-item checklist answers — same authorization as the parent log.
-      // Required for both clients' inspection_results sub-collection sync
-      // (SyncService._submitOfflineResults on mobile; pushInspectionResults/
-      // fetchInspectionResults in inspectra-web's sync.ts). Without this
-      // nested match it falls through to the default-deny rule below and
-      // both clients' result sync silently breaks.
+      // LEGACY — per-item checklist answers.
+      //
+      // Both clients now store answers in a `results` array on the parent
+      // inspection_logs document (see [REF: INSPECTION_RESULTS_SCHEMA] in
+      // inspectra-web's sync.ts). The historical contents of this
+      // sub-collection were copied up into that field, and nothing writes
+      // here any more.
+      //
+      // Access is kept open for two reasons: the web client still falls back
+      // to reading it for any log that somehow has no embedded results, and a
+      // stale cached PWA build could still be writing here until it updates.
+      // Safe to delete this block once no old clients remain in the wild —
+      // at which point the sub-collection documents can be deleted too.
       match /inspection_results/{itemId} {
         allow read: if isAuthorized();
         allow create, update: if isAuthorized();
