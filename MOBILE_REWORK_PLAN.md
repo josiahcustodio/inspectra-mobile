@@ -169,10 +169,42 @@ and may go.
 | `lib/ui/widgets/establishment_banner.dart` | New. Business name, owner, address. Pinned. |
 | `lib/ui/screens/inspection_form_screen.dart` | Mount the banner above `_buildStickyScoreHeader`. Both stay pinned while the checklist scrolls. |
 
-**Watch the vertical budget.** The score header is already roughly 76pt of pinned
-chrome. A second pinned block on a small phone can leave very little checklist
-visible. The banner may shrink on scroll (address collapsing to one line), but the
-business name must never leave the screen.
+**Watch the vertical budget. Corrected measurement:** the score header is **~96pt**
+once a score exists, not 76pt — a 48pt figure at `height: 1.0`, a ~14pt band label and
+32pt of padding (~84pt before the first answer, where the figure is 36pt). It grows with
+the system text scale, because the score column is always its tallest child and nothing
+caps that text. Both numbers were verified twice, independently, against
+`_buildStickyScoreHeader`.
+
+A second pinned block on a small phone can leave very little checklist visible. The
+banner may shrink on scroll (address collapsing to one line, then dropping), but the
+business name must never leave the screen **while the inspector is scoring**.
+
+**The one exception, and why it exists (`[REF: BANNER_KEYBOARD_YIELD]`).** The body is
+`Column[banner, scoreHeader, Expanded(checklist)]`, and the two pinned children are
+inflexible — so when they exceed the body height the `Expanded` is clamped to zero and
+the checklist is clipped outright, silently in release. That is reachable: 320x568 at
+text scale 2.0 with the keyboard open for the remarks field leaves ~276pt against ~285pt
+of chrome. The banner therefore withdraws **entirely** while `viewInsets.bottom > 0`,
+rather than merely shrinking, which hands back the ~118pt the form had before the banner
+existed and keeps the focused field scrollable into view.
+
+**Correction — this yield is not confined to text entry, as first assumed.** Marking a
+checklist item FAIL reveals a *required* deficiency-notes `TextFormField` inline,
+mid-checklist (`checklist_item_card.dart`), so the keyboard genuinely does open while the
+inspector is scoring — during the most consequential write on the screen. The first
+implementation paired the yield with a genericised app bar title, which left **nothing**
+on screen naming the business at that moment. So the app bar keeps its own copy of the
+business name: it sits outside the body `Column`, costs the checklist no vertical space,
+and never yields. **That app-bar copy, not the banner, is what actually satisfies the
+never-lose-the-name rule.** The banner is the readable primary; the app bar is the
+backstop. Do not "de-duplicate" them.
+
+Decided 2026-10-01 after review. A sliver-based implementation was rejected because
+`SliverPersistentHeaderDelegate` demands fixed `minExtent`/`maxExtent` and neither block
+has a knowable height. The `viewInsets` read must stay above the `Scaffold` — `Scaffold`
+strips the bottom inset from its own body, so the same call from inside the body reads a
+constant zero and fails silently.
 
 ### Chunk 2.5 — `categories` data cleanup (separate repo/session, D18)
 
@@ -398,11 +430,29 @@ that are not in this document.
 |---|---|---|
 | 2026-10-01 | 0 — planning | Decisions D1–D16 locked. Plan written. No application code touched. V3/V4/V5 resolved; V1/V2 deferred to the top of the Chunk 1 session. |
 | 2026-10-01 | V1/V2 | Both resolved by investigation. V1 → D17 (rule stays `isAuthorized()`; the web admin lets officers write). V2 → D18 + new Chunk 2.5 (`categories` is authoritative but dirty: 8 duplicate `Food` docs, templates only on ids 1–3, no catch-all, `category_id` type drift). |
+| 2026-10-02 | 2 — establishment banner | **Committed.** New `establishment_banner.dart` with a three-step density ladder; mounted above the score header on the live form only (D16), name/owner/address only (D1). Review corrected the plan's 76pt score-header estimate to **~96pt** and found that the `Column`/`Expanded` body clips the checklist outright at 320x568 / scale 2.0 with the keyboard up — hence `[REF: BANNER_KEYBOARD_YIELD]` and the deliberate app-bar name duplication that backs it. `flutter analyze` clean. Docs + new walkthrough at §E.32. **No device or emulator run — every pixel figure in this chunk is derived from source, not observed, and `densityFor` has no test.** |
 | 2026-10-01 | 1 — read-only establishments | **Committed.** D1/D2/D3 done. Add/edit screen and both routes deleted; create/edit unreachable from all five entry points; UI trimmed to name/owner/address. Review found two real defects beyond the spec: the "now-dead" preservation branch was not dead (→ D19 upgrade bridge) and `qr_scanner_screen` still rendered the category. `syncData` now parses before clearing, for establishments and templates both. `flutter analyze` clean (2 pre-existing infos in `profile_screen.dart`). Docs + README updated. **Not run on a device.** |
 
 ## 7. Open items
 
-None open. V1 and V2 were resolved at the top of the Chunk 1 session, as planned.
+**Next session is Chunk 2.5, and it is in a different repo** (`inspectra-web` / the admin
+scripts), not here. Chunk 3 must not start before it lands — it is what makes the
+category picker's data fit to pick from.
+
+Carried forward, none blocking:
+
+- **Chunks 1 and 2 have never run on a device.** Both were analyzer-clean and
+  review-clean, but every layout figure in Chunk 2 is computed from source rather than
+  observed, and Chunk 1's upgrade bridge cannot occur on a fresh install. The Chunk 6
+  device pass is the first time either is exercised.
+- **`assets/data/batangas_psgc.json` is orphaned.** The deleted barangay picker was its
+  only consumer and nothing in `lib/` loads any asset now, but it is still declared in
+  `pubspec.yaml`. Dropping both is a free size win; left alone because `pubspec.yaml` was
+  outside Chunk 1's scope.
+- **`EstablishmentBanner.densityFor` is pure and static specifically to be testable, and
+  has no test.** The hysteresis arithmetic it encodes was wrong once already.
+
+V1 and V2 were resolved at the top of the Chunk 1 session, as planned.
 
 ### Resolved
 

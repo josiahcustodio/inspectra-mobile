@@ -14,6 +14,7 @@ import '../../data/services/offline_service.dart';
 import '../../data/services/sync_service.dart';
 import '../../providers/rating_provider.dart';
 import '../widgets/checklist_item_card.dart';
+import '../widgets/establishment_banner.dart';
 
 class InspectionFormScreen extends StatefulWidget {
   final Establishment establishment;
@@ -34,9 +35,13 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
   bool _isSubmitting = false;
   bool _initialized = false;
 
+  final ScrollController _scrollController = ScrollController();
+  BannerDensity _bannerDensity = BannerDensity.full;
+
   @override
   void dispose() {
     _remarksController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -45,6 +50,31 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
     super.initState();
     _templates = OfflineService.getLocalTemplatesByCategory(
         widget.establishment.category);
+    _scrollController.addListener(_onChecklistScroll);
+  }
+
+  // [REF: BANNER_SCROLL_DENSITY]
+  /// Trades banner rows for checklist rows as the inspector scrolls.
+  ///
+  /// Two pinned blocks are a lot to ask of a small phone: the score header
+  /// below measures about 96pt once a score exists (a 48pt figure at
+  /// `height: 1.0`, a ~14pt band label, and 32pt of padding — more than the
+  /// 76pt the plan estimated), and it grows with the system text scale, since
+  /// the score column is always its tallest child and nothing caps that text.
+  /// So the banner gives ground instead, down to the business name and owner.
+  /// `densityFor` only ever returns a different value after a real threshold
+  /// crossing, so this rebuilds on a handful of frames per inspection rather
+  /// than on every scroll tick.
+  void _onChecklistScroll() {
+    final next = EstablishmentBanner.densityFor(
+      _scrollController.offset,
+      _bannerDensity,
+    );
+    if (next != _bannerDensity) {
+      setState(() {
+        _bannerDensity = next;
+      });
+    }
   }
 
   @override
@@ -358,18 +388,71 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Drives [REF: BANNER_KEYBOARD_YIELD] below. This has to be read HERE,
+    // from the State's own context above the Scaffold: Scaffold wraps its body
+    // in a MediaQuery with removeViewInsets(removeBottom: true) whenever
+    // resizeToAvoidBottomInset is on, so the same call from inside the body
+    // — a Builder, a LayoutBuilder, or the banner itself — reads a constant
+    // zero. It would fail silently: no warning, no exception, just the clipped
+    // checklist this guard exists to prevent.
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: Text('Inspect: ${widget.establishment.name}'),
+        // Deliberately duplicates the banner's business name, because this
+        // is the copy that cannot be taken away: the app bar sits outside the
+        // body Column, so unlike the banner it costs the checklist no vertical
+        // space and never yields to the keyboard. When the banner withdraws
+        // ([REF: BANNER_KEYBOARD_YIELD]) this is what still names the business
+        // the inspector is scoring. Truncating on a narrow screen is an
+        // acceptable price for a backstop.
+        title: Text(
+          widget.establishment.name.isEmpty
+              ? 'Inspection'
+              : widget.establishment.name,
+        ),
       ),
       body: _isSubmitting
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
+                // Both of these sit outside the scroll view, which is what pins
+                // them. A CustomScrollView with two SliverPersistentHeaders
+                // would have given the shrink for free, but every
+                // SliverPersistentHeaderDelegate has to declare minExtent and
+                // maxExtent in logical pixels — and neither of these blocks has
+                // a knowable height, since both grow with MediaQuery.textScaler
+                // and the banner also grows with how far an address wraps.
+                // Guessed extents would clip at large text scales.
+                //
+                // [REF: BANNER_KEYBOARD_YIELD]
+                // What this Column cannot do is overflow gracefully: the two
+                // pinned children are inflexible, so once they exceed the body
+                // the Expanded below is clamped to zero and the checklist is
+                // clipped outright. That is reachable — 320x568 at text scale
+                // 2.0 with the keyboard up leaves about 276pt against roughly
+                // 285pt of chrome. The banner withdraws completely for the
+                // duration instead of shrinking, which hands back the ~118pt
+                // the form had before it existed and keeps the focused field
+                // scrollable into view.
+                //
+                // Note this fires for ANY keyboard, not just the remarks field
+                // at the bottom: marking an item FAIL reveals a required
+                // deficiency-notes field inline, mid-checklist, so the keyboard
+                // genuinely does open while scoring. That is why the app bar
+                // above keeps its own copy of the business name — it is what
+                // satisfies the never-lose-the-name rule during exactly this
+                // window.
+                if (!keyboardOpen)
+                  EstablishmentBanner(
+                    establishment: widget.establishment,
+                    density: _bannerDensity,
+                  ),
                 _buildStickyScoreHeader(), // Pinned Header
                 Expanded(
                   child: SingleChildScrollView(
+                    controller: _scrollController,
                     child: Column(
                       children: [
                         const SizedBox(height: 16), // Padding before checklist starts

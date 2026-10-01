@@ -212,13 +212,21 @@ All user interface code: screens and reusable widgets.
 ---
 
 ##### `inspection_form_screen.dart`
-**Purpose:** The active inspection execution screen. Dynamically loads `ChecklistTemplate` items by establishment category and renders them as `ChecklistItemCard` widgets grouped by sub-category. Displays a sticky real-time score header. Also includes a Remarks/Notes `TextFormField` and a Photo Evidence tap-to-capture section. A large "Submit Inspection" `ElevatedButton` sits in the bottom navigation bar.
+**Purpose:** The active inspection execution screen. Dynamically loads `ChecklistTemplate` items by establishment category and renders them as `ChecklistItemCard` widgets grouped by sub-category. The body is a `Column` of **two pinned blocks over one scrolling list**: an `EstablishmentBanner` identity strip (business name / owner / address), then the sticky real-time score header, then an `Expanded` `SingleChildScrollView` holding the checklist, a Remarks/Notes `TextFormField` and a Photo Evidence tap-to-capture section. A large "Submit Inspection" `ElevatedButton` sits in the bottom navigation bar. The app bar title is the establishment's business name.
 
 | Category | Details |
 |---|---|
 | Dialogs | None |
 | **Gesture Detectors** | `GestureDetector` on the Photo Evidence container → calls `_pickImage()` which opens the device camera via `image_picker`. |
+| **Scroll listener** | `ScrollController` on the checklist → `_onChecklistScroll()` (`[REF: BANNER_SCROLL_DENSITY]`) asks `EstablishmentBanner.densityFor(offset, current)` for the next banner density and `setState`s only on a real threshold crossing. |
 | **Snackbars** | Checklist incomplete: "Please answer all checklist items before submitting." Submit online success: "Submitted Successfully!". Saved offline: "Saved offline. Will sync later." |
+
+> **Two things in `build()` that look like mistakes and are not.**
+>
+> 1. **The business name is rendered twice** — once in the app bar, once in the banner. The banner is removed outright while a keyboard is open (`[REF: BANNER_KEYBOARD_YIELD]`), because the two pinned children are inflexible and once they exceed the body height the `Expanded` is clamped to zero and the checklist is clipped silently in release (reachable at 320x568, text scale 2.0, keyboard up). That window is not rare or late: marking an item FAIL reveals a required deficiency-notes field *inline, mid-checklist*, so the keyboard opens while the inspector is scoring. The app bar copy sits outside the body `Column`, costs no vertical space and never yields, so it — not the banner — is what guarantees the name stays on screen. **Do not de-duplicate them.**
+> 2. **`MediaQuery.viewInsetsOf(context).bottom` is read above the `Scaffold`, not inside the body.** `Scaffold` strips the bottom inset from its own body (`removeViewInsets(removeBottom: true)` while `resizeToAvoidBottomInset` is on), so the identical call from a `Builder`, a `LayoutBuilder` or the banner itself reads a constant zero — no warning, no exception, the guard just never fires.
+>
+> The body is deliberately **not** a `CustomScrollView` with `SliverPersistentHeader`s: every delegate must declare `minExtent`/`maxExtent` in logical pixels, and neither pinned block has a knowable height (both scale with `MediaQuery.textScaler`; the banner also depends on whether its address wraps).
 
 ---
 
@@ -281,6 +289,20 @@ Reusable UI components.
 | Dialogs | None |
 | **Gesture Detectors** | `GestureDetector` (inside `_SegmentButton`) on PASS → `provider.setAnswer(id, 'Pass')`. `GestureDetector` on FAIL → `provider.setAnswer(id, 'Fail')`. |
 | Alerts / Snackbars | None |
+
+---
+
+##### `establishment_banner.dart`
+**Purpose:** The pinned identity strip at the top of the live inspection form (`[REF: ESTABLISHMENT_BANNER]`) — business name, owner name and address, and **nothing else**: barangay, the category badge, the sanitary permit and control numbers and the raw document id are all deliberately absent. Used by `inspection_form_screen.dart` only. A `StatelessWidget` rendering `(establishment, density)`; the scroll state lives on the screen. Also exports the `BannerDensity` enum (`full` → `compact` → `minimal`, `[REF: BANNER_DENSITY]`) and the pure static `EstablishmentBanner.densityFor(offset, current)` (`[REF: BANNER_DENSITY_THRESHOLDS]`).
+
+| Category | Details |
+|---|---|
+| Dialogs | None |
+| Gesture Detectors | None — display-only widget |
+| **Animation** | `AnimatedSize` (150 ms, `easeOut`, `topCenter`) so a density change glides instead of jumping, and so a row on its way out is clipped rather than overflowing on the frame it is removed. |
+| Alerts / Snackbars | None |
+
+> **Nothing in this widget has a fixed height, on purpose**, and the collapse / re-expand thresholds are asymmetric on purpose too (32/8 and 112/88). Shedding a row makes the scroll viewport taller, which lowers `maxScrollExtent`, which can drag the scroll offset back across the threshold it just crossed — so each 24pt gap has to exceed the ~21pt row that step gives back, or the banner oscillates. The owner and address rows render through a `TextScaler` clamped at 1.3; the business name keeps the reader's full text scale and always gets two lines, because two branches of one chain can differ only in the tail of their name.
 
 ---
 
