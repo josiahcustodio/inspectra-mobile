@@ -166,8 +166,6 @@ class _NewInspectionModalState extends State<NewInspectionModal> {
                   separatorBuilder: (_, __) => const Divider(height: 1, indent: 16, endIndent: 16),
                   itemBuilder: (context, index) {
                     final est = _suggestions[index];
-                    // Show a short reference code (last 8 chars) instead of the full UUID
-                    final shortId = est.id.length > 8 ? est.id.substring(est.id.length - 8).toUpperCase() : est.id.toUpperCase();
                     return Material(
                       color: Colors.transparent,
                       child: ListTile(
@@ -188,13 +186,21 @@ class _NewInspectionModalState extends State<NewInspectionModal> {
                             color: AppTheme.textPrimary,
                           ),
                         ),
+                        // Owner name is what an inspector uses to tell two
+                        // similarly named businesses apart. The fallback is
+                        // insurance, not an observed case: no live record has
+                        // a blank owner today, but the web admin's form makes
+                        // the field optional (it stores null for an empty
+                        // one), so an empty subtitle is reachable.
                         subtitle: Text(
-                          '${est.barangay.isNotEmpty ? est.barangay : est.category} • #$shortId',
+                          est.ownerName.isNotEmpty ? est.ownerName : est.formattedAddress,
                           style: const TextStyle(
                             fontFamily: '.SF Pro Text',
                             fontSize: 12,
                             color: AppTheme.textSecondary,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         onTap: () => _onSuggestionTap(est),
                       ),
@@ -267,24 +273,6 @@ class _NewInspectionModalState extends State<NewInspectionModal> {
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Center(
-                      child: TextButton(
-                        onPressed: () {
-                          context.pop();
-                          context.push('/establishments/add');
-                        },
-                        style: TextButton.styleFrom(
-                          foregroundColor: AppTheme.textSecondary,
-                          textStyle: const TextStyle(
-                            fontFamily: '.SF Pro Text',
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        child: const Text('Add New Establishment Manually'),
                       ),
                     ),
                   ]

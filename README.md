@@ -33,10 +33,10 @@ A high-performance, offline-first Flutter mobile application tailored for City H
   - Uses `Hive` for robust local data storage, allowing inspectors to work in areas with poor or no internet connectivity.
   - Synchronizes inspection templates, establishment data, and pending submissions (offline queue) automatically or manually with `Firebase/Firestore` when internet is available.
 
-- **Establishment Management**
-  - Search and view a database of registered establishments.
-  - Add new establishments dynamically, with automatically updated "Type of Establishment" categories fetched from the Firebase backend.
-  - Track basic setup data, employee count, health certificates, and sanitary permit control numbers.
+- **Establishment Browsing (read-only)**
+  - Search and view the cached database of registered establishments, offline.
+  - Each record shows **business name, owner name and address only**. Barangay, personnel counts, health-certificate counts, permit/control numbers and the category badge are stored on the record but deliberately not shown on mobile.
+  - Tapping a record **starts its inspection**; there is no create, edit or delete. The web admin dashboard is the sole owner of establishment data, so the two clients can never blank each other's fields.
 
 - **Smart Inspection Forms**
   - Dynamic rendering of checklists based on the specific category of the establishment (e.g., Public Places, Food, Supermarket).
@@ -70,7 +70,7 @@ A high-performance, offline-first Flutter mobile application tailored for City H
 | `mobile_scanner` | QR code scanning |
 | `image_picker` | Camera capture for photo evidence |
 | `signature` | Digital signature capture widget |
-| `qr_flutter` | QR code generation for establishment IDs |
+| `qr_flutter` | QR code rendering — used **only** by the MFA enrollment screen for the TOTP secret. Mobile no longer generates establishment QR codes |
 | `uuid` | Unique ID generation for inspection logs |
 
 ---
@@ -110,7 +110,7 @@ All data layer logic: models, local storage, and remote API services.
 
 | File | Purpose |
 |---|---|
-| `establishment.dart` | Hive-persisted data model (`@HiveType(typeId: 0)`) for a registered establishment. Fields: `id`, `name`, `category`, `address`, `ownerName`, `personnelCount`, `personnelWithHc`, `sanitaryPermitNo`, `controlNo`. Includes `fromJson()` (Firestore → model) and `toJson()` (model → Firestore map). |
+| `establishment.dart` | Hive-persisted data model (`@HiveType(typeId: 0)`) for a registered establishment. 14 Hive field slots (0–13): `id`, `name`, `category`, `address`, `ownerName`, `personnelCount`, `personnelWithHc`, `sanitaryPermitNo`, `controlNo`, `barangay`, `categoryId`, `isSynced`, `createdAt`, `qrCodeId`. Includes `fromJson()` (Firestore → model) and **deliberately no `toJson()`** — the app only reads these documents. Nine of the fields are no longer rendered anywhere in the UI but **must stay declared**: dropping a `@HiveField` corrupts the existing box on every inspector's device. |
 | `establishment.g.dart` | Auto-generated Hive TypeAdapter for `Establishment`. Enables Hive box serialization. **Do not edit manually.** |
 | `checklist_template.dart` | Hive-persisted data model (`@HiveType(typeId: 1)`) for a single inspection checklist item. Fields: `id`, `category`, `subCategory`, `item` (question text), `weight` (demerit value on fail). Includes `fromJson()` for parsing Firestore data. |
 | `checklist_template.g.dart` | Auto-generated Hive TypeAdapter for `ChecklistTemplate`. **Do not edit manually.** |
@@ -121,8 +121,8 @@ All data layer logic: models, local storage, and remote API services.
 | File | Purpose |
 |---|---|
 | `auth_service.dart` | Static service wrapping Firebase Auth. Methods: `signInWithGoogle()` (popup for Web, native for mobile), `signInWithEmailPassword()`, `signUpWithEmailPassword()` (also sets display name), `sendPasswordResetEmail()`, `signOut()`. Exposes `currentUser` and `authStateChanges` stream. |
-| `offline_service.dart` | Manages all local Hive storage. Registers Hive adapters for `Establishment` and `ChecklistTemplate`. `syncData()` fetches categories, establishments, and checklist templates from Firestore and stores them in local Hive boxes. Also provides helpers: `getLocalEstablishments()`, `getEstablishmentById()`, `getLocalTemplatesByCategory()`, `updateLocalEstablishment()`, `deleteLocalEstablishment()`. Exposes the `inspectionsQueueBox` for the offline submission queue. |
-| `sync_service.dart` | Handles all Firestore and Firebase Storage remote operations. Key methods: `uploadImage()` / `uploadBytes()` (Firebase Storage), `submitInspectionLog()`, `submitInspectionResults()` (per-item results as Firestore sub-collection), `syncPendingInspections()` (flushes offline queue), `syncSingleInspection()`, `fetchInspectionHistory()`, `fetchInspectionDetails()`, `insertEstablishment()`, `updateEstablishment()`, `deleteEstablishment()`, `fetchCategories()`. |
+| `offline_service.dart` | Manages all local Hive storage and the **download** half of sync. Registers Hive adapters for `Establishment` and `ChecklistTemplate`. `syncData()` fetches categories, establishments and checklist templates from Firestore into local Hive boxes — parsing each snapshot *completely* before replacing its box, so a single type-drifted document can no longer leave the device with an empty cache. Its establishment pass carries `[REF: ESTABLISHMENT_UPGRADE_BRIDGE]`, a temporary branch that preserves an establishment an older build created offline (and never uploads it); it is removed one release from now. Read helpers: `readPref()`, `writePref()`, `getLocalEstablishments()`, `getEstablishmentById()`, `getLocalTemplatesByCategory()`. Exposes the `inspectionsQueueBox` for the offline submission queue. There are **no establishment write helpers**. |
+| `sync_service.dart` | The **upload** half of offline-first, plus the cloud reads the UI needs. Methods: `evidencePath()`, `uploadImage()` / `uploadBytes()` (Firebase Storage), `submitInspectionLog()`, `syncPendingInspections()` (drains the offline queue; deletes a local entry only after the Firestore write succeeds), `syncSingleInspection()`, `fetchCategories()`, `fetchInspectionHistory()`, `fetchInspectionDetails()`. **No establishment writes** — `insertEstablishment`, `updateEstablishment`, `deleteEstablishment` and `syncPendingEstablishments` were all removed; a comment where they used to be records that `establishments` is pull-only on mobile. Note `fetchCategories()` currently has no callers; it is kept for the planned inspection-time category picker. |
 
 ---
 
@@ -195,30 +195,19 @@ All user interface code: screens and reusable widgets.
 | Category | Details |
 |---|---|
 | **ModalBottomSheet (3)** | (1) `_showNewInspectionModal()` — opens `NewInspectionModal` widget (search-to-start inspection). (2) `_showPendingModal()` — opens a `DraggableScrollableSheet` (60–90% height) listing all offline-queued inspections, each with a "Submit" button and a bulk "Submit All" button. (3) `_showInspectionSummaryModal()` — opens a summary sheet showing establishment name, date, score, rating badge, and a "Start New Inspection" button. |
-| **Gesture Detectors** | `SquishyButton` (custom scale-animated press widget) on "New Inspection" button and Pending count card. Tapping a Recent Activity card opens the inspection summary modal. |
+| **Gesture Detectors** | `InkWell` / button taps on the "New Inspection" button and the Pending count card. Tapping a Recent Activity card opens the inspection summary modal. (The `SquishyButton` press-animation wrapper this screen used to mention was deleted with `ui/widgets/animations/`.) |
 | **Snackbars** | Sync result after submitting pending items: success or failure messages. |
 
 ---
 
 ##### `establishments_screen.dart`
-**Purpose:** Lists all locally cached establishments with a real-time search bar filtering by name or address. Navigates to `EstablishmentDetailsScreen` on tap, and to `AddEstablishmentScreen` via the `+` icon. Reloads the list when returning from either screen with a `true` result.
+**Purpose:** Read-only list of all locally cached establishments, with a real-time search bar. The filter matches **name, owner name and formatted address** — deliberately the same three fields each row displays. Tapping a row pushes `/inspection` for that establishment, the same destination the new-inspection sheet and the QR scanner reach. There is no `+` button and no editor: nothing on this screen can modify establishment data.
 
 | Category | Details |
 |---|---|
 | Dialogs | None |
-| **Gesture Detectors** | `GestureDetector` on the `+` add button → navigates to `AddEstablishmentScreen`. `GestureDetector` on each establishment list tile → navigates to `EstablishmentDetailsScreen`. |
-| Alerts / Snackbars | None (snackbars shown in child screens) |
-
----
-
-##### `establishment_details_screen.dart`
-**Purpose:** Displays the full record for a single establishment: business name, owner, category, address, personnel stats, permit numbers, and an auto-generated QR code (`QrImageView` from `qr_flutter`). AppBar has Edit (pencil) and Delete (trash) `IconButton` actions.
-
-| Category | Details |
-|---|---|
-| **Dialogs** | `AlertDialog` — **Delete Confirmation**: "Are you sure you want to permanently delete this establishment?" with "Cancel" (`TextButton`) and "Delete" (`TextButton`, red) actions via `showDialog<bool>`. |
-| Gesture Detectors | None (interactions via AppBar `IconButton` widgets) |
-| **Snackbars** | Delete success: "Establishment deleted successfully." (green background). Delete failure: "Failed to delete establishment." (red background). |
+| **Gesture Detectors** | `InkWell` on each establishment list tile → `context.push('/inspection', extra: e)`. |
+| Alerts / Snackbars | None |
 
 ---
 
@@ -234,13 +223,15 @@ All user interface code: screens and reusable widgets.
 ---
 
 ##### `qr_scanner_screen.dart`
-**Purpose:** Full-screen QR code scanner using `mobile_scanner`. Renders a camera feed with a darkened overlay and a white-bordered scan frame. Includes a top header bar with a back button and torch toggle. A bottom action area provides a manual search `TextField` for lookup by name/ID (shows autocomplete suggestions) and an "Add New Establishment" link.
+**Purpose:** Full-screen QR code scanner using `mobile_scanner`. Renders a camera feed with a darkened overlay and a white-bordered scan frame. Includes a top header bar with a back button and torch toggle. A bottom action area provides a manual search `TextField` for lookup by name/ID; matches appear as suggestion rows showing the business name and the owner's name. The QR code's payload is just the establishment's document id, looked up in the local Hive cache — so scanning works with no signal.
 
 | Category | Details |
 |---|---|
 | Dialogs | None |
-| **Gesture Detectors** | `GestureDetector` on back button → `Navigator.pop(context)`. `GestureDetector` on torch button → `controller.toggleTorch()`. `InkWell` on "Can't find it? Add New Establishment" text → navigates to `AddEstablishmentScreen`. `ListTile.onTap` on search suggestion → navigates to `InspectionFormScreen`. |
+| **Gesture Detectors** | `GestureDetector` on back button → `context.pop()`. `GestureDetector` on torch button → `controller.toggleTorch()`. `ListTile.onTap` on a search suggestion → `context.pushReplacement('/inspection', …)`. |
 | **Snackbars** | QR not in local cache: "Establishment not found in local DB." (floating, rounded corners). |
+
+> The old "Can't find it? Add New Establishment" link was removed: establishments are created in the web admin only. If a scanned or searched record is not on the phone, the fix is a sync, not a local create.
 
 ---
 
@@ -277,17 +268,6 @@ All user interface code: screens and reusable widgets.
 
 ---
 
-##### `add_establishment_screen.dart`
-**Purpose:** Full form screen for adding a new establishment or editing an existing one. Form fields: Business Name, Owner Name, Address, Personnel Count, Personnel with HC, Sanitary Permit No., Control No., and a `DropdownButtonFormField` for the establishment category (loaded live from Firestore). Uses `GlobalKey<FormState>` for validation. Form fields have staggered `FadeSlideEntrance` animation on entry.
-
-| Category | Details |
-|---|---|
-| Dialogs | None |
-| Gesture Detectors | None (standard Flutter form controls) |
-| **Snackbars** | Category not selected: "Please select a Type of Establishment." (red, floating). Add success: "Establishment Added Successfully!" (green, floating). Add failure: "Failed to add establishment. Try again." (red, floating). Edit success: "Establishment Updated Successfully!" (green, floating). Edit failure: "Failed to update establishment. Try again." (red, floating). |
-
----
-
 #### `lib/ui/widgets/`
 Reusable UI components.
 
@@ -305,13 +285,15 @@ Reusable UI components.
 ---
 
 ##### `new_inspection_modal.dart`
-**Purpose:** A `showModalBottomSheet` content widget for starting a new inspection. Features a live search `TextField` that filters local establishments by name/ID and shows up to 5 suggestions in a scrollable list. When suggestions are empty, shows an "OR" divider, a "Scan QR Code" `OutlinedButton`, and an "Add New Establishment Manually" `TextButton`.
+**Purpose:** A `showModalBottomSheet` content widget for starting a new inspection. Features a live search `TextField` that filters local establishments by name/ID and shows up to 5 suggestions in a scrollable list; each suggestion shows the business name with the **owner's name** underneath (falling back to the address). When there are no suggestions, shows an "OR" divider and a "Scan QR Code" `OutlinedButton`.
 
 | Category | Details |
 |---|---|
 | Dialogs | None |
-| **Gesture Detectors** | `ListTile.onTap` on each suggestion → `_onSuggestionTap()` which pops modal and navigates to `InspectionFormScreen`. `OutlinedButton` → pops modal and navigates to `QRScannerScreen`. `TextButton` → pops modal and navigates to `AddEstablishmentScreen`. |
+| **Gesture Detectors** | `ListTile.onTap` on each suggestion → `_onSuggestionTap()`, which pops the modal and pushes `/inspection`. `OutlinedButton` → pops the modal and pushes `/qr`. |
 | Alerts / Snackbars | None |
+
+> The "Add New Establishment Manually" `TextButton` was removed along with the screen it opened. A failed search now has exactly one fallback here: the QR scanner.
 
 ---
 
@@ -352,6 +334,29 @@ Reusable UI components.
 
 - Requires `google-services.json` (Android) or `GoogleService-Info.plist` (iOS) from the Firebase Console for Auth and Firestore access.
 - Offline data stored in Hive is unencrypted. Ensure physical device security protocols are observed during field use.
-- Firestore Security Rules govern data access and insertion on the backend.
+- Firestore Security Rules govern data access and insertion on the backend. Note what they do **not** do: the `establishments` write rule is intentionally `isAuthorized()`, not `isAdmin()`, because the web admin dashboard lets officer-role users create and edit establishments and narrowing it would lock them out. That the mobile app never writes establishments is enforced by there being no write call in `sync_service.dart`, not by a rule. The reasoning is recorded as a comment on the `establishments` match block in `firestore.rules`.
+- Offline data in Hive is keyed by field *number*. Never remove or renumber a `@HiveField` on a model that has already shipped — it corrupts the stored box on upgrade. Fields that stop being used are left declared.
 - `.env` file (if used for any remaining config) must never be committed to version control — it is listed in `.gitignore`.
+
+---
+
+## ⚠️ Known stale sections in this README
+
+This file is maintained by hand and has drifted. The establishment, sync and
+QR-related sections were re-verified against the source on **2026-10-01**; the
+following were **confirmed wrong on the same date but deliberately left**, because
+they predate that pass and fixing them properly means re-reading files it did not
+touch. Do not trust them:
+
+| Spot | Problem |
+|---|---|
+| Features → "Robust Evidence Collection" bullet, and the `signature` row in the tech stack | The `signature` package was removed from `pubspec.yaml` on 2026-09-16 and digital signature capture was never a working feature. |
+| `signature_pad.dart` section under `lib/ui/widgets/` | That file was deleted on 2026-09-16. It does not exist. |
+| `auth_wrapper.dart` section, and the `AuthWrapper` mentions in the `main.dart` and `profile_screen.dart` rows | There is no `AuthWrapper` class anywhere in `lib/`. Routing and the auth gate are handled by `core/router/app_router.dart`'s `redirect` callback. |
+| `flutter_dotenv` row in the tech stack | Not a dependency in `pubspec.yaml`. Firebase config lives in `firebase_options.dart`. |
+| `inspection_log.dart` row | The field is `results`, not `offlineResults`, and the methods are `toJson()` / `toQueueJson()` — there is no `toFirestoreJson()`. |
+| `assets:` block implications | `assets/data/batangas_psgc.json` is still declared and still in the repo, but nothing in `lib/` loads it — it was the barangay list for the deleted establishment form. |
+
+The per-file walkthroughs in `../../docs/code-walkthrough/mobile/` are re-read against
+the source each time they are updated and are the more reliable reference.
 

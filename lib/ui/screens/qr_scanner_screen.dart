@@ -238,7 +238,16 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
                             color: Colors.transparent,
                             child: ListTile(
                               title: Text(est.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                              subtitle: Text('ID: ${est.id} • ${est.category}'),
+                              // D1 — owner name, not the id or the category
+                              // badge. Matches the sibling picker in
+                              // new_inspection_modal so the two agree.
+                              subtitle: Text(
+                                est.ownerName.isNotEmpty
+                                    ? est.ownerName
+                                    : est.formattedAddress,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                               onTap: () => _onSuggestionTap(est),
                             ),
                           );
@@ -281,29 +290,6 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  InkWell(
-                    onTap: () {
-                      context.push('/establishments/add');
-                    },
-                    child: const Padding(
-                      padding: EdgeInsets.all(8.0),
-                      child: Text(
-                        "Can't find it? Add New Establishment",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                          shadows: [
-                            Shadow(
-                                color: Colors.black87,
-                                blurRadius: 4,
-                                offset: Offset(0, 1))
-                          ],
-                        ),
-                      ),
-                    ),
-                  )
                 ],
               ),
             ),

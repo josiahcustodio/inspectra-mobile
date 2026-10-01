@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
+// For the Box.listenable() extension.
 import 'package:hive_flutter/hive_flutter.dart';
-import '../data/models/establishment.dart';
 import '../data/services/offline_service.dart';
 import '../data/services/sync_service.dart';
 
@@ -16,9 +16,6 @@ class PendingInspectionsProvider extends ChangeNotifier {
     _loadPendingCount();
     // Listen to Hive box changes
     OfflineService.inspectionsQueueBox
-        .listenable()
-        .addListener(_loadPendingCount);
-    Hive.box<Establishment>(OfflineService.establishmentsBoxName)
         .listenable()
         .addListener(_loadPendingCount);
   }
@@ -49,10 +46,13 @@ class PendingInspectionsProvider extends ChangeNotifier {
   }
 
   // [REF: PENDING_COUNTER]
+  //
+  // The queue length is the whole count. It used to also include locally
+  // created establishments, which PendingCard then indexed into pendingItems —
+  // a list that only ever held inspections — so any pending establishment
+  // overran it. Mobile no longer creates establishments at all.
   void _loadPendingCount() {
-    int inspectionCount = OfflineService.inspectionsQueueBox.length;
-    int estCount = OfflineService.getLocalEstablishments().where((e) => !e.isSynced).length;
-    _pendingCount = inspectionCount + estCount;
+    _pendingCount = OfflineService.inspectionsQueueBox.length;
     notifyListeners();
   }
 
@@ -65,10 +65,7 @@ class PendingInspectionsProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final successInspections = await SyncService.syncPendingInspections();
-      final successEsts = await SyncService.syncPendingEstablishments();
-      
-      final success = successInspections && successEsts;
+      final success = await SyncService.syncPendingInspections();
 
       if (success) {
         _lastSyncedAt = DateTime.now();
@@ -116,9 +113,6 @@ class PendingInspectionsProvider extends ChangeNotifier {
   @override
   void dispose() {
     OfflineService.inspectionsQueueBox
-        .listenable()
-        .removeListener(_loadPendingCount);
-    Hive.box<Establishment>(OfflineService.establishmentsBoxName)
         .listenable()
         .removeListener(_loadPendingCount);
     super.dispose();

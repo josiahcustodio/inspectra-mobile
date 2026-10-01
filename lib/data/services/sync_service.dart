@@ -4,7 +4,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import '../models/inspection_log.dart';
-import '../models/establishment.dart';
 import 'offline_service.dart';
 
 class SyncService {
@@ -194,92 +193,33 @@ class SyncService {
   }
 
   // ─── Establishments ─────────────────────────────────────────────────────────
-
-  /// Inserts an [Establishment] into Firestore.
-  /// Returns the new Firestore-generated document ID on success, or null on failure.
-  /// The category name is stored directly (denormalized schema).
-  static Future<String?> insertEstablishment(Establishment establishment) async {
-    try {
-      final payload = establishment.toJson();
-      final docRef = _db.collection('establishments').doc(establishment.id);
-      await docRef.set(payload);
-      return docRef.id;
-    } catch (e) {
-      debugPrint('Establishment insert failed: $e');
-      return null;
-    }
-  }
-
-  /// Updates an [Establishment] in Firestore.
-  static Future<bool> updateEstablishment(Establishment establishment) async {
-    try {
-      final payload = establishment.toJson();
-      // merge: true, matching syncPendingEstablishments — a mobile-side edit
-      // must never blank fields (e.g. category_id) the web admin app already
-      // set, since toJson() omits nulls rather than writing them.
-      await _db
-          .collection('establishments')
-          .doc(establishment.id)
-          .set(payload, SetOptions(merge: true));
-      return true;
-    } catch (e) {
-      debugPrint('Establishment update failed: $e');
-      return false;
-    }
-  }
-
-  /// Deletes an [Establishment] from Firestore.
-  static Future<bool> deleteEstablishment(String id) async {
-    try {
-      await _db.collection('establishments').doc(id).delete();
-      return true;
-    } catch (e) {
-      debugPrint('Establishment deletion failed: $e');
-      return false;
-    }
-  }
-
-  // Removed submitInspectionResults since results are embedded.
-
-  /// Syncs all unsynced establishments from local Hive to Firestore.
-  // [REF: ESTABLISHMENT_SYNC_QUEUE]
-  static Future<bool> syncPendingEstablishments() async {
-    final localEstablishments = OfflineService.getLocalEstablishments();
-    final pendingEsts = localEstablishments.where((e) => !e.isSynced).toList();
-
-    if (pendingEsts.isEmpty) return true;
-
-    bool allSuccess = true;
-
-    for (var est in pendingEsts) {
-      try {
-        final payload = est.toJson();
-        // Force is_synced to 1 in the remote payload regardless of local state
-        payload['is_synced'] = 1;
-        
-        await _db
-            .collection('establishments')
-            .doc(est.id)
-            .set(payload, SetOptions(merge: true));
-
-        // Update local state to synced
-        est.isSynced = true;
-        await OfflineService.updateEstablishment(est);
-      } catch (e) {
-        debugPrint('Failed to sync establishment ${est.id}: $e');
-        allSuccess = false;
-      }
-    }
-
-    return allSuccess;
-  }
+  //
+  // Read-only from mobile. The web admin owns establishment data, so there is
+  // deliberately no insert/update/delete and no outbound establishment queue
+  // here — `establishments` is only ever pulled down, by
+  // OfflineService.syncData. The Firestore rule still permits writes because
+  // the web admin needs it (see firestore.rules); mobile not writing is
+  // enforced by the absence of a call, not by the rule.
 
   // ─── Categories ─────────────────────────────────────────────────────────────
 
-  /// Fetches categories from Firestore as {id, name} pairs. `id` is the
-  /// actual `categories/{id}` Firestore doc id and must be used verbatim as
-  /// `category_id` when writing establishments — it is not a sequential
-  /// index.
+  /// Fetches categories from Firestore as {id, name} pairs, deduped by name.
+  ///
+  /// `id` is the actual `categories/{id}` Firestore doc id, not a sequential
+  /// index. Nothing writes `category_id` on an establishment any more (D2),
+  /// and nothing currently consumes this id either: `ChecklistTemplate` has no
+  /// category_id field, and template lookup matches on the category *name*
+  /// (`OfflineService.getLocalTemplatesByCategory`). syncData reads a doc's
+  /// category_id only transiently, to resolve a name. Chunk 3 is where the id
+  /// gets a real consumer.
+  ///
+  /// Currently UNREFERENCED — its only caller was the deleted add screen.
+  /// Chunk 3 picks it back up for the category picker. Kept rather than
+  /// deleted because the dedupe-by-name here is load-bearing: the live
+  /// `categories` collection holds several docs named "Food" (see Chunk 2.5).
+  /// Beware that the dedupe keeps the FIRST doc id seen per name, and only
+  /// ids 1-3 actually have templates — so this is safe today only because
+  /// Firestore returns doc ids in lexicographic order and '1' sorts first.
   // [REF: CATEGORY_LOOKUP]
   static Future<List<Map<String, String>>> fetchCategories() async {
     try {

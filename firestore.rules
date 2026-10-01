@@ -52,6 +52,20 @@ service cloud.firestore {
     }
 
     // 2. Establishments
+    //
+    // DO NOT narrow create/update to isAdmin(). It looks wrong — the mobile app
+    // is read-only here and the web admin is the sole owner of this data — but
+    // "web admin" does not mean "admin role". inspectra-web mounts its
+    // Establishments page under both the admin and the officer branch of
+    // routes.tsx, and its Add/Edit buttons are not role-gated; both call
+    // saveEstablishment ([REF: ESTABLISHMENT_WRITE]). Every self-signup is an
+    // officer, since the profiles create rule above pins role == 'officer'.
+    // Tightening this to isAdmin() would lock most of the web app's real users
+    // out of the only screen that maintains establishments.
+    //
+    // Mobile not writing is enforced by the absence of any write call — see the
+    // Establishments note in lib/data/services/sync_service.dart — not here.
+    // (Decision D17.)
     match /establishments/{establishmentId} {
       allow read: if isAuthorized();
       allow create, update: if isAuthorized();

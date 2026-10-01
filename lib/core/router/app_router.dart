@@ -6,7 +6,6 @@ import '../../ui/screens/login_screen.dart';
 import '../../ui/screens/splash_sync_screen.dart';
 import '../../ui/screens/main_navigation_screen.dart';
 import '../../ui/screens/qr_scanner_screen.dart';
-import '../../ui/screens/add_establishment_screen.dart';
 import '../../ui/screens/mfa_enroll_screen.dart';
 import '../../ui/screens/mfa_verify_screen.dart';
 import '../../ui/screens/verify_email_screen.dart';
@@ -116,19 +115,9 @@ GoRouter createAppRouter(AuthProvider authProvider) {
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const QRScannerScreen(),
       ),
-      GoRoute(
-        path: '/establishments/add',
-        parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const AddEstablishmentScreen(),
-      ),
-      GoRoute(
-        path: '/establishments/edit',
-        parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) {
-          final est = state.extra as Establishment;
-          return AddEstablishmentScreen(establishment: est);
-        },
-      ),
+      // No /establishments/add or /establishments/edit route: the web admin is
+      // the sole owner of establishment data, so there is nowhere on mobile to
+      // navigate for a create or an edit.
       GoRoute(
         path: '/inspection',
         parentNavigatorKey: _rootNavigatorKey,

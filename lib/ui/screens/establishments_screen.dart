@@ -21,9 +21,13 @@ class _EstablishmentsScreenState extends State<EstablishmentsScreen> {
     var establishments = OfflineService.getLocalEstablishments();
     if (_searchQuery.isNotEmpty) {
       final query = _searchQuery.toLowerCase();
-      establishments = establishments.where((e) => 
-        e.name.toLowerCase().contains(query) || 
-        e.address.toLowerCase().contains(query)
+      // Matched against the same three fields the row renders, so a hit is
+      // always visible in the result — searching a hidden field would look
+      // like the filter was broken.
+      establishments = establishments.where((e) =>
+        e.name.toLowerCase().contains(query) ||
+        e.ownerName.toLowerCase().contains(query) ||
+        e.formattedAddress.toLowerCase().contains(query)
       ).toList();
     }
 
@@ -35,34 +39,13 @@ class _EstablishmentsScreenState extends State<EstablishmentsScreen> {
             // Header
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Establishments',
-                    style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                      color: primary,
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: () async {
-                      final result = await context.push<bool>('/establishments/add');
-                      if (result == true) {
-                        setState(() {});
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: primary.withValues(alpha: 0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(Icons.add_rounded, color: primary),
-                    ),
-                  ),
-                ],
+              child: Text(
+                'Establishments',
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  color: primary,
+                ),
               ),
             ),
             const SizedBox(height: 16),
@@ -123,12 +106,9 @@ class _EstablishmentsScreenState extends State<EstablishmentsScreen> {
                       itemBuilder: (_, i) {
                         final e = establishments[i];
                         return InkWell(
-                          onTap: () async {
-                            final result = await context.push<bool>('/establishments/edit', extra: e);
-                            if (result == true) {
-                              setState(() {}); // Refresh list
-                            }
-                          },
+                          // Same entry point the new-inspection modal uses, so
+                          // both routes into an inspection behave identically.
+                          onTap: () => context.push('/inspection', extra: e),
                           borderRadius: BorderRadius.circular(18),
                           child: Container(
                             padding: const EdgeInsets.all(16),
@@ -167,6 +147,17 @@ class _EstablishmentsScreenState extends State<EstablishmentsScreen> {
                                           fontSize: 15,
                                         ),
                                       ),
+                                      if (e.ownerName.isNotEmpty) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          e.ownerName,
+                                          style: TextStyle(
+                                              color: Colors.grey.shade600,
+                                              fontSize: 12),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
                                       const SizedBox(height: 2),
                                       Text(
                                         e.formattedAddress,

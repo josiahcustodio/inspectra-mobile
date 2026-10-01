@@ -21,6 +21,10 @@ class Establishment extends HiveObject {
   @HiveField(4)
   final String ownerName;
 
+  // Fields 5–9 are no longer rendered anywhere on mobile, but they stay
+  // declared: they are already present in every inspector's Hive box, and a
+  // field number that stops being declared can never be safely reused for
+  // anything else afterwards.
   @HiveField(5)
   final int personnelCount;
 
@@ -42,6 +46,12 @@ class Establishment extends HiveObject {
   @HiveField(10)
   final String? categoryId;
 
+  // Vestigial for new records — mobile no longer creates establishments, so
+  // nothing sets this false any more. Still read in exactly one place:
+  // [REF: ESTABLISHMENT_UPGRADE_BRIDGE] in offline_service.syncData, which
+  // uses it to spot records an older build created offline. That branch and
+  // this comment both go in Chunk 6; the field itself stays, for the same
+  // box-compatibility reason as fields 5–9.
   @HiveField(11, defaultValue: true)
   bool isSynced;
 
@@ -108,37 +118,6 @@ class Establishment extends HiveObject {
     );
   }
 
-  /// Firestore-bound JSON. [categoryId], [barangay] and [qrCodeId] are only
-  /// included when set, so a write from this client never blanks out a value
-  /// the web admin app (or a future mobile screen) already stored — this
-  /// relies on [SyncService.updateEstablishment] using `SetOptions(merge: true)`.
-  // [REF: ESTABLISHMENT_MODEL_WRITE]
-  Map<String, dynamic> toJson() {
-    dynamic addressPayload = address;
-    if (address.trim().startsWith('{') && address.trim().endsWith('}')) {
-      try {
-        addressPayload = jsonDecode(address);
-      } catch (_) {}
-    }
-
-    final json = <String, dynamic>{
-      'business_name': name,
-      'category': category,
-      'address': addressPayload,
-      'owner_name': ownerName,
-      'personnel_count': personnelCount,
-      'personnel_with_hc': personnelWithHc,
-      'sanitary_permit_no': sanitaryPermitNo,
-      'control_no': controlNo,
-      'is_synced': isSynced ? 1 : 0,
-      'created_at': createdAt ?? DateTime.now().toIso8601String(),
-      if (qrCodeId != null) 'qr_code_id': qrCodeId,
-    };
-    // Omit rather than write null/empty — this doc is written with
-    // SetOptions(merge: true), so an omitted key leaves whatever the other
-    // client (web) already set untouched, instead of blanking it out.
-    if (barangay.isNotEmpty) json['barangay'] = barangay;
-    if (categoryId != null) json['category_id'] = categoryId;
-    return json;
-  }
+  // There is deliberately no toJson(): the web admin owns establishment data,
+  // so this model is only ever deserialized, never written back to Firestore.
 }
