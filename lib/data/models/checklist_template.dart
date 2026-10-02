@@ -19,12 +19,26 @@ class ChecklistTemplate extends HiveObject {
   @HiveField(4)
   final int weight;
 
+  /// The `categories/{id}` document id this item belongs to — the machine key
+  /// the inspection form resolves a checklist by (D24).
+  ///
+  /// Nullable because it has to be, not as a style choice: this box already
+  /// ships on inspectors' phones holding records written before field 5
+  /// existed. Hive hands a missing field back as `null`, so a non-nullable
+  /// `fields[5] as String` would throw on every read of an un-upgraded box and
+  /// leave the device with no checklists at all. See
+  /// [REF: TEMPLATE_LOOKUP_ID_BRIDGE] in OfflineService for how the lookup
+  /// copes for the one release that matters.
+  @HiveField(5)
+  final String? categoryId;
+
   ChecklistTemplate({
     required this.id,
     required this.category,
     required this.subCategory,
     required this.item,
     required this.weight,
+    this.categoryId,
   });
 
   factory ChecklistTemplate.fromJson(Map<String, dynamic> json) {
@@ -37,6 +51,11 @@ class ChecklistTemplate extends HiveObject {
       subCategory: json['sub_category'] as String? ?? 'General',
       item: json['item_name'] as String? ?? json['item'] as String? ?? '',
       weight: (json['weight'] as num?)?.toInt() ?? 5,
+      // Coerced rather than cast. Every template doc in Firestore carries a
+      // string today, but `category_id` has drifted to a raw number before now
+      // (three establishments still hold the int 1), and syncData already
+      // defends against it the same way.
+      categoryId: json['category_id']?.toString(),
     );
   }
 

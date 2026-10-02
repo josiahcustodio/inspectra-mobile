@@ -5,14 +5,17 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/category_suggester.dart';
 import '../../core/rating_scale.dart';
 import '../../data/models/checklist_template.dart';
 import '../../data/models/establishment.dart';
+import '../../data/models/inspection_category.dart';
 import '../../data/models/inspection_log.dart';
 import '../../data/services/auth_service.dart';
 import '../../data/services/offline_service.dart';
 import '../../data/services/sync_service.dart';
 import '../../providers/rating_provider.dart';
+import '../widgets/category_picker.dart';
 import '../widgets/checklist_item_card.dart';
 import '../widgets/establishment_banner.dart';
 
@@ -26,7 +29,26 @@ class InspectionFormScreen extends StatefulWidget {
 }
 
 class _InspectionFormScreenState extends State<InspectionFormScreen> {
-  late List<ChecklistTemplate> _templates;
+  /// Every category this device knows about, with its availability already
+  /// decided. Read once: the Hive boxes cannot change while this form is open,
+  /// since syncData only runs at launch.
+  List<CategoryOption> _categoryOptions = const [];
+
+  /// Null until the inspector picks. The form opens with no category chosen —
+  /// deliberately, because D4 moves this decision to inspection time and
+  /// nothing on the establishment is allowed to make it for them.
+  CategoryOption? _category;
+
+  CategorySuggestion? _suggestion;
+
+  /// Driven by the pick, no longer by `widget.establishment.category`.
+  List<ChecklistTemplate> _templates = const [];
+
+  /// Bumped whenever the picker's own field text has to be re-derived from
+  /// [_category] rather than from whatever the inspector last did inside it.
+  /// See [_onCategorySelected].
+  int _pickerRevision = 0;
+
   File? _evidenceImage;
   final ImagePicker _picker = ImagePicker();
 
@@ -48,8 +70,20 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
   @override
   void initState() {
     super.initState();
-    _templates = OfflineService.getLocalTemplatesByCategory(
-        widget.establishment.category);
+    _categoryOptions = OfflineService.getLocalCategoryOptions();
+
+    // [REF: CATEGORY_SUGGESTION_SOURCE]
+    // Only selectable categories are offered to the suggester, so a rule
+    // pointing at one that has no checklist on this device — or no published
+    // weighting — produces no suggestion instead of one the inspector would be
+    // unable to accept.
+    _suggestion = CategorySuggester.suggestFor(
+      widget.establishment.name,
+      availableCategoryIds: _categoryOptions
+          .where((o) => o.isSelectable)
+          .map((o) => o.category.id),
+    );
+
     _scrollController.addListener(_onChecklistScroll);
   }
 
@@ -80,12 +114,121 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Initialize atomically here — safe to read Provider, runs before first build.
-    // The _initialized guard prevents re-runs on subsequent dependency changes.
+    // Still here rather than in initState because reading a Provider needs the
+    // inherited widgets in place; the _initialized guard prevents re-runs on
+    // subsequent dependency changes.
+    //
+    // What it does has changed, though. There are no templates to init from
+    // yet — a category has not been picked. But RatingProvider is a single
+    // app-wide instance (main.dart), so it can still be holding the previous
+    // inspection's answers and weights, and `score` would read off them.
+    // Clearing on open is what makes "no category picked" an actually empty
+    // form; `init` then runs on every pick.
     if (!_initialized) {
       _initialized = true;
-      Provider.of<RatingProvider>(context, listen: false).init(_templates);
+      Provider.of<RatingProvider>(context, listen: false).reset();
     }
+  }
+
+  // [REF: CATEGORY_SWITCH]
+  /// Applies a category pick, confirming first if it would throw work away.
+  ///
+  /// `RatingProvider.init` clears answers, notes and weights atomically, so
+  /// stale state is not the hazard here — losing the inspector's work silently
+  /// is. Deficiency notes count as work too: they are typed into the item
+  /// cards, not into the remarks box, so they disappear with the answers.
+  /// Switching before anything has been answered must not prompt, because at
+  /// that point the picker is just being corrected.
+  Future<void> _onCategorySelected(CategoryOption option) async {
+    if (option.category.id == _category?.category.id) return;
+
+    // D25 enforced here as well as in the picker, deliberately. A disabled
+    // `DropdownMenuEntry` is a framework property of one widget; this is the
+    // function that decides which checklist gets filled in. If the two ever
+    // disagree, a Livestock Farm form would load 13 weight-0 items, accept all
+    // 13 marks, and submit a flat 100 / Excellent for an inspection nobody
+    // scored — the precise fabrication D22 refuses to commit.
+    if (!option.isSelectable) {
+      // Not a silent return. In the state this guards against, the picker's
+      // own field has already written the category's name into itself, so
+      // bailing without a word would leave it naming a form the screen is not
+      // loading. Re-keying snaps the field back; the snackbar says why.
+      final reason = option.unavailableLabel;
+      setState(() => _pickerRevision++);
+      if (reason != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${option.category.name} cannot be inspected: '
+                '${reason.toLowerCase()}.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    final ratingProvider = Provider.of<RatingProvider>(context, listen: false);
+    final hasWork = ratingProvider.answers.isNotEmpty ||
+        ratingProvider.itemNotes.values.any((n) => n.trim().isNotEmpty);
+
+    if (hasWork) {
+      final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              title: const Text('Change checklist category?'),
+              content: Text(
+                'Switching to ${option.category.name} clears the '
+                '${ratingProvider.answers.length} item(s) you have already '
+                'marked, and any deficiency notes with them.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Keep current checklist'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  child: const Text('Switch and clear'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+
+      // Checked before either branch touches setState: the form can be popped
+      // from under an open dialog, and setState on a disposed State throws.
+      if (!mounted) return;
+
+      if (!confirmed) {
+        // DropdownMenu has already written the new label into its own field by
+        // the time onSelected fires, so declining here would leave the picker
+        // naming a category the form is not using. Rebuilding it under a new
+        // key is what snaps it back to `_category`.
+        setState(() => _pickerRevision++);
+        return;
+      }
+    }
+
+    final templates =
+        OfflineService.getLocalTemplatesByCategoryId(option.category.id);
+
+    setState(() {
+      _category = option;
+      _templates = templates;
+      // Bumped on accept as well as on decline. DropdownMenu keeps its field
+      // text in its own State, so it is only in step with `_category` when the
+      // pick came from the menu — accepting the suggestion by its button would
+      // otherwise leave the field reading "Choose a category" over a loaded
+      // checklist.
+      //
+      // This re-derives the field on every path that CHANGES the category. It
+      // does not cover a path that changes nothing: typing a filter and
+      // tapping away leaves the typed text sitting in the field, because no
+      // selection and no decline occurred. See the gap documented on
+      // CategoryPicker.
+      _pickerRevision++;
+    });
+
+    ratingProvider.init(templates);
   }
 
   // [REF: PHOTO_EVIDENCE_PICKER]
@@ -116,6 +259,80 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
   // [REF: INSPECTION_SUBMIT]
   Future<void> _submitForm() async {
     final ratingProvider = Provider.of<RatingProvider>(context, listen: false);
+
+    // Guard order is load-bearing, not tidiness. `score` returns null whenever
+    // `_weights` is empty, so `isCompleted` is false both before a category is
+    // picked and when the picked one resolved to no items — and its message,
+    // "answer all checklist items", would blame the inspector for two
+    // conditions they cannot answer their way out of. The specific reasons
+    // have to be tested first.
+    final picked = _category;
+
+    // Before "pick a category", because on a device that has never completed a
+    // sync there is no category to pick and telling them to pick one is a dead
+    // end. The categories box is filled only by syncData, so a first launch
+    // without signal leaves it empty.
+    if (_categoryOptions.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'No checklist categories on this device yet. Connect to the '
+              'internet once to download them, then try again.'),
+        ),
+      );
+      return;
+    }
+
+    if (picked == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Choose the checklist category for this inspection before submitting.'),
+        ),
+      );
+      return;
+    }
+
+    // The other half of the D25 guard above. Unreachable while the picker and
+    // this screen agree; it is here so that the rule holds at the point the
+    // record is written, not only at the point it is chosen.
+    if (!picked.isSelectable) {
+      // Tests `isSelectable`, not `unavailableLabel != null`. They are the same
+      // thing today only because every reason happens to map to a label; a
+      // future reason that mapped to null would disable the picker row and
+      // silently pass this guard, which is the one place it must not.
+      final blocked = picked.unavailableLabel ?? 'its checklist cannot be scored';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${picked.category.name} cannot be submitted: '
+              '${blocked.toLowerCase()}.'),
+        ),
+      );
+      return;
+    }
+
+    if (_templates.isEmpty) {
+      // Unreachable as the code stands, and kept anyway. `_category` is only
+      // ever set to a selectable option, selectable already means at least one
+      // template resolved, and both counts come from the same Hive box in the
+      // same screen session — syncData cannot run underneath an open form,
+      // since its only entry point unmounts this screen. So the earlier
+      // guards catch every route to an empty checklist today.
+      //
+      // It stays because what it prevents is the worst thing this screen can
+      // do: a zero-item inspection satisfies `isCompleted` the moment it is
+      // opened and submits as a flat 100 with no items behind it. That is one
+      // refactor away from reachable, and the message names a cause the
+      // inspector can act on.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'No checklist items for ${picked.category.name} on this device. '
+              'Connect to the internet to download the checklists, then try again.'),
+        ),
+      );
+      return;
+    }
 
     if (!ratingProvider.isCompleted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -181,6 +398,11 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
     final log = InspectionLog(
       establishmentId: widget.establishment.id,
       establishmentName: widget.establishment.name, // saved to Firestore so any phone can display it
+      // D24 — the id is the machine key, the name is the human record of which
+      // checklist was administered. Neither is read back off the
+      // establishment; both come from what the inspector picked.
+      categoryId: picked.category.id,
+      categoryName: picked.category.name,
       inspectorName: AuthService.currentUser?.displayName ??
           AuthService.currentUser?.email ??
           'Inspector',
@@ -340,6 +562,60 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
 
   // [REF: CHECKLIST_RENDER]
   Widget _buildChecklist() {
+    // Four empty states, deliberately worded apart, because the wrong one is
+    // actively misleading. "No checklists found for this category" is a report
+    // about a chosen category; showing it before anything is chosen reads as a
+    // form that failed to load. And any copy telling the inspector to pick a
+    // category is an instruction they cannot follow when the picker has no
+    // rows, or no selectable ones — so those two states get their own text,
+    // naming the cause and the fix. The last branch is unreachable today (see
+    // the submit guards) and is kept for the same reason they are.
+    if (_categoryOptions.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(24.0),
+        child: Center(
+          child: Text(
+            'No checklist categories on this device yet.\n'
+            'Connect to the internet once to download them.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+          ),
+        ),
+      );
+    }
+
+    // Reachable by exactly the partial sync [REF: TEMPLATE_LOOKUP_ID_BRIDGE]
+    // describes: the categories fetch lands, the establishments loop throws,
+    // and the templates are never written. Every row then carries its own
+    // "no checklist items on this device", but the body must not still be
+    // telling the inspector to choose one of them.
+    if (_categoryOptions.every((o) => !o.isSelectable)) {
+      return const Padding(
+        padding: EdgeInsets.all(24.0),
+        child: Center(
+          child: Text(
+            'None of the categories on this device has a checklist yet.\n'
+            'Connect to the internet to finish downloading them.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+          ),
+        ),
+      );
+    }
+
+    if (_category == null) {
+      return const Padding(
+        padding: EdgeInsets.all(24.0),
+        child: Center(
+          child: Text(
+            'Choose a checklist category above to load its items.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+          ),
+        ),
+      );
+    }
+
     if (_templates.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(24.0),
@@ -383,7 +659,17 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
   }
 
   Widget _buildChecklistItem(ChecklistTemplate item) {
-    return ChecklistItemCard(item: item);
+    // Keyed by item id so that switching category replaces the cards rather
+    // than re-using their elements by position.
+    //
+    // Not for the deficiency notes: that TextFormField is mounted only while
+    // the item reads Fail, and `RatingProvider.init` clears every answer in
+    // the same frame as the new templates, so on the first build after a
+    // switch no card has one. It is for the animations — the card's
+    // `AnimatedContainer` and the notes `AnimatedSize` interpolate from
+    // whatever their element last held, so re-used elements would animate a
+    // new checklist's rows out of the old one's selection states.
+    return ChecklistItemCard(key: ValueKey(item.id), item: item);
   }
 
   @override
@@ -456,6 +742,35 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
                     child: Column(
                       children: [
                         const SizedBox(height: 16), // Padding before checklist starts
+
+                        // [REF: CATEGORY_PICKER_PLACEMENT]
+                        // Inside the scroll view, not in the pinned Column
+                        // above. [REF: BANNER_KEYBOARD_YIELD] already has the
+                        // two pinned blocks within ~9pt of clipping the
+                        // checklist at 320x568 / scale 2.0, and the category is
+                        // chosen once at the start — pinning it would spend
+                        // permanent height on a transient decision. The app bar
+                        // and banner keep naming the establishment, and the
+                        // chosen category is restated on the submitted log.
+                        //
+                        // The filter field opens the keyboard on focus, which
+                        // triggers the banner yield. That works in the picker's
+                        // favour: the ~118pt the banner hands back is reclaimed
+                        // exactly while the menu needs room. The menu itself is
+                        // an Overlay route, so it is never clipped by this
+                        // Column either way.
+                        CategoryPicker(
+                          // Rebuilt from scratch when a pick is declined, so
+                          // DropdownMenu's internal field text cannot drift
+                          // away from `_category`. See [REF: CATEGORY_SWITCH].
+                          key: ValueKey('category-picker-$_pickerRevision'),
+                          options: _categoryOptions,
+                          selectedCategoryId: _category?.category.id,
+                          suggestion: _suggestion,
+                          onSelected: _onCategorySelected,
+                        ),
+                        const SizedBox(height: 8),
+
                         _buildChecklist(),
                   const Divider(height: 32, thickness: 2),
 

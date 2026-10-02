@@ -202,46 +202,16 @@ class SyncService {
   // enforced by the absence of a call, not by the rule.
 
   // ─── Categories ─────────────────────────────────────────────────────────────
-
-  /// Fetches categories from Firestore as {id, name} pairs, deduped by name.
-  ///
-  /// `id` is the actual `categories/{id}` Firestore doc id, not a sequential
-  /// index. Nothing writes `category_id` on an establishment any more (D2),
-  /// and nothing currently consumes this id either: `ChecklistTemplate` has no
-  /// category_id field, and template lookup matches on the category *name*
-  /// (`OfflineService.getLocalTemplatesByCategory`). syncData reads a doc's
-  /// category_id only transiently, to resolve a name. Chunk 3 is where the id
-  /// gets a real consumer.
-  ///
-  /// Currently UNREFERENCED — its only caller was the deleted add screen.
-  /// Chunk 3 picks it back up for the category picker. Kept rather than
-  /// deleted because the dedupe-by-name here is load-bearing: the live
-  /// `categories` collection holds several docs named "Food" (see Chunk 2.5).
-  /// Beware that the dedupe keeps the FIRST doc id seen per name, and only
-  /// ids 1-3 actually have templates — so this is safe today only because
-  /// Firestore returns doc ids in lexicographic order and '1' sorts first.
-  // [REF: CATEGORY_LOOKUP]
-  static Future<List<Map<String, String>>> fetchCategories() async {
-    try {
-      final snapshot = await _db.collection('categories').get();
-      final seenNames = <String>{};
-      final result = <Map<String, String>>[];
-      for (final doc in snapshot.docs) {
-        final name = doc.data()['name']?.toString() ?? '';
-        if (name.isEmpty || !seenNames.add(name)) continue;
-        result.add({'id': doc.id, 'name': name});
-      }
-      return result;
-    } catch (e) {
-      debugPrint('Fetch categories failed: $e');
-      return const [
-        {'id': '1', 'name': 'Food'},
-        {'id': '2', 'name': 'Water'},
-        {'id': '3', 'name': 'Institutional'},
-        {'id': '4', 'name': 'Others'},
-      ];
-    }
-  }
+  //
+  // There is no category fetch here. `fetchCategories` used to live at this
+  // spot, unreferenced since the add screen was deleted in Chunk 1, and Chunk 3
+  // did NOT pick it back up: the picker has to work in a dead zone, so it reads
+  // the Hive box that OfflineService.syncData fills (see
+  // [REF: CATEGORY_PICKER_OPTIONS]) rather than Firestore. Deleted rather than
+  // kept, because every claim its doc comment made had expired — its
+  // dedupe-by-name was load-bearing only while eight documents shared the name
+  // "Food", and its offline fallback hardcoded `Water` and `Institutional`,
+  // which Chunk 2.5 established were never the names of those checklists.
 
   // ─── Inspection History ──────────────────────────────────────────────────────
 

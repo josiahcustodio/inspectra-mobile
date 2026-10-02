@@ -8,6 +8,25 @@ class InspectionLog {
   /// a local Hive cache to resolve it. Falls back to 'Unknown' if absent.
   final String? establishmentName;
 
+  /// Which checklist this inspection was scored against, recorded as BOTH the
+  /// `categories` document id and the category name (D24).
+  ///
+  /// Both, because this document is the audit record and is already
+  /// deliberately self-describing: every row of [results] denormalizes its
+  /// `item_name`, `sub_category` and `weight`, and [establishmentName] is
+  /// stored for the same reason. A bare `category_id: '15'` would be the only
+  /// identifier on the document a reader could not resolve, and it goes stale
+  /// the moment a category is renamed — which Chunk 2.5 just did to two of
+  /// them. The name is the human record of which checklist was administered;
+  /// the id is the machine key, and the one identity in that collection that
+  /// was never wrong (`'2'` was called "Water" while holding the supermarkets
+  /// checklist).
+  ///
+  /// Nullable because the field is additive: logs written before Chunk 3 have
+  /// neither, and nothing may invent one for them.
+  final String? categoryId;
+  final String? categoryName;
+
   final String inspectorName;
   final int totalDemerits;
   final double percentageRating;
@@ -30,6 +49,8 @@ class InspectionLog {
     String? id,
     required this.establishmentId,
     this.establishmentName,
+    this.categoryId,
+    this.categoryName,
     required this.inspectorName,
     required this.totalDemerits,
     required this.percentageRating,
@@ -47,6 +68,8 @@ class InspectionLog {
       id: json['id'] as String?,
       establishmentId: json['establishment_id'] as String? ?? '',
       establishmentName: json['establishment_name'] as String?,
+      categoryId: json['category_id']?.toString(),
+      categoryName: json['category_name'] as String?,
       inspectorName: json['inspector_name'] as String? ?? '',
       totalDemerits: json['total_demerits'] as int? ?? 0,
       percentageRating: (json['percentage_rating'] as num?)?.toDouble() ?? 0.0,
@@ -67,6 +90,12 @@ class InspectionLog {
       'id': id,
       'establishment_id': establishmentId,
       if (establishmentName != null) 'establishment_name': establishmentName,
+      // Omitted rather than written as null when absent, matching
+      // establishment_name above: a Chunk-4 reader has to be able to tell a
+      // pre-Chunk-3 log (no such key) from one where the picker somehow
+      // recorded nothing.
+      if (categoryId != null) 'category_id': categoryId,
+      if (categoryName != null) 'category_name': categoryName,
       'inspector_name': inspectorName,
       'total_demerits': totalDemerits,
       'percentage_rating': percentageRating,

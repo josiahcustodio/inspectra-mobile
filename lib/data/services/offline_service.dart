@@ -4,10 +4,12 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../models/checklist_template.dart';
 import '../models/establishment.dart';
+import '../models/inspection_category.dart';
 
 class OfflineService {
   static const String establishmentsBoxName = 'establishments';
   static const String templatesBoxName = 'checklist_templates';
+  static const String categoriesBoxName = 'categories';
   static const String inspectionsQueueBoxName = 'inspections_queue';
   static const String prefsBoxName = 'app_prefs';
 
@@ -18,9 +20,11 @@ class OfflineService {
   static Future<void> init() async {
     Hive.registerAdapter(EstablishmentAdapter());
     Hive.registerAdapter(ChecklistTemplateAdapter());
+    Hive.registerAdapter(InspectionCategoryAdapter());
 
     await Hive.openBox<Establishment>(establishmentsBoxName);
     await Hive.openBox<ChecklistTemplate>(templatesBoxName);
+    await Hive.openBox<InspectionCategory>(categoriesBoxName);
     await Hive.openBox<String>(inspectionsQueueBoxName);
     await Hive.openBox<String>(prefsBoxName);
   }
@@ -48,7 +52,59 @@ class OfflineService {
         for (final doc in categoriesSnapshot.docs)
           doc.id: (doc.data()['name'] as String? ?? 'Unknown')
       };
-      
+
+      // Parse before touching the box, for the reason the template pass below
+      // does: a throw after a clear() would leave the device with an empty
+      // picker behind a log line claiming the local cache was kept. (The
+      // establishment pass shares the discipline but not the shape — it
+      // deleteAll's selected keys rather than clearing, to protect the D19
+      // bridge.)
+      //
+      // Built from the snapshot ALONE — deliberately above the fallback
+      // injection that follows. Those three names are stale fabrications now:
+      // Chunk 2.5 proved `'2'` was never Water (it held the SUPERMARKETS
+      // checklist and is now named that) and `'3'` was never Institutional,
+      // and no category has ever been called "Food Establishment". In the
+      // throwaway lookup map the worst they can do is mislabel a denormalized
+      // display string. Persisted, they would put a row in the picker for a
+      // category that does not exist, which resolves to zero templates and
+      // reads to the inspector as a missing checklist rather than as a stale
+      // fallback. Fixing the map itself is out of scope here — it still
+      // affects nothing the picker reads.
+      final serverCategories = <InspectionCategory>[];
+      for (final doc in categoriesSnapshot.docs) {
+        final data = Map<String, dynamic>.from(doc.data());
+        data['id'] = doc.id;
+        serverCategories.add(InspectionCategory.fromJson(data));
+      }
+
+      // An EMPTY result is not propagated, and this is the one box where that
+      // matters enough to diverge from the template pass. A `get()` served
+      // from an evicted offline cache resolves to an empty snapshot rather
+      // than throwing, so the parse above succeeds and a clear() would wipe a
+      // good picker on a launch with no signal — leaving the inspector with no
+      // category to choose and no category to blame. Nothing is lost by
+      // keeping the cache instead: a `categories` collection that is genuinely
+      // empty makes every checklist unreachable anyway, so there is no reading
+      // of an empty snapshot that the old data serves worse.
+      //
+      // The establishment and template passes below still DO clear on an empty
+      // snapshot. That asymmetry is deliberate but not a judgement that they
+      // are safe: it is pre-existing behaviour outside this chunk's scope, and
+      // worth closing the same way. Its worst case is a filled categories box
+      // over an emptied template box, which shows eleven rows every one of
+      // which reports no checklist items.
+      final catBox = Hive.box<InspectionCategory>(categoriesBoxName);
+      if (serverCategories.isNotEmpty) {
+        await catBox.clear();
+        await catBox.putAll({for (final c in serverCategories) c.id: c});
+      } else {
+        debugPrint(
+          'Categories snapshot was empty; keeping ${catBox.length} cached '
+          'category/categories rather than emptying the picker',
+        );
+      }
+
       // Fallback for known Supabase category IDs if they didn't migrate properly
       final defaultCategories = {
         '1': 'Food Establishment',
@@ -188,6 +244,13 @@ class OfflineService {
           data['category'] = 'Unknown';
         }
 
+        // Write the resolved id back, so the id the template is *stored* under
+        // is the same one this pass just used to resolve its name. Without
+        // this, a doc that carries its id in `category` instead of
+        // `category_id` would cache with a name but no id — invisible to the
+        // id lookup, and not enough on its own to trip the name bridge either.
+        if (catId != null) data['category_id'] = catId;
+
         serverTemplates.add(ChecklistTemplate.fromJson(data));
       }
 
@@ -208,13 +271,126 @@ class OfflineService {
     return Hive.box<Establishment>(establishmentsBoxName).get(id);
   }
 
+  // ─── Categories ─────────────────────────────────────────────────────────────
+
+  static Box<InspectionCategory> get _categoriesBox =>
+      Hive.box<InspectionCategory>(categoriesBoxName);
+
+  // [REF: CATEGORY_PICKER_OPTIONS]
+  /// Every locally cached category as a picker row, in the city's own order,
+  /// each already marked selectable or not (D25).
+  ///
+  /// This is the single place the availability rules are applied — the widget
+  /// renders the verdict and never recomputes it. The rules themselves are in
+  /// `CategoryOption.evaluate`, stated as derived facts about the templates
+  /// rather than as a list of blocked ids.
+  ///
+  /// Nothing is filtered out. An unselectable category still gets a row,
+  /// because a vanished row and a failed sync look identical to an inspector.
+  /// That includes the deliberately-parked `'9' Food`, which has no templates
+  /// of its own and so lands on the no-checklist rule — the plan's Chunk 3
+  /// section claims this filtering is unnecessary after the Chunk 2.5 cleanup,
+  /// but `'9'` was knowingly left in place, so it is required after all.
+  static List<CategoryOption> getLocalCategoryOptions() {
+    final templates = Hive.box<ChecklistTemplate>(templatesBoxName).values.toList();
+    final options = _categoriesBox.values
+        .map((c) => CategoryOption.evaluate(
+              c,
+              resolveTemplatesFor(category: c, allTemplates: templates),
+            ))
+        .toList();
+    options.sort(CategoryOption.compare);
+    return options;
+  }
+
   // [REF: CHECKLIST_TEMPLATE_LOOKUP]
-  static List<ChecklistTemplate> getLocalTemplatesByCategory(String category) {
-    return Hive.box<ChecklistTemplate>(templatesBoxName)
-        .values
-        .where((t) =>
-            t.category.toLowerCase().trim() ==
-            category.toLowerCase().trim())
+  /// The checklist for one category, resolved by **document id** (D24).
+  ///
+  /// Replaces a lookup that matched on the category *name*. Name matching is
+  /// what made the duplicate `Food` documents dangerous: two categories sharing
+  /// a name merged their templates into a single form, so seeding one item onto
+  /// `'9'` would have silently added an item to the real Food checklist. It is
+  /// also how a category whose name happened to equal an establishment's
+  /// free-text `category` string acquired a working form out of nowhere. Id
+  /// resolution makes both impossible by construction instead of safe by
+  /// accident.
+  static List<ChecklistTemplate> getLocalTemplatesByCategoryId(
+      String categoryId) {
+    return resolveTemplatesFor(
+      category: _categoriesBox.get(categoryId),
+      allTemplates: Hive.box<ChecklistTemplate>(templatesBoxName).values.toList(),
+    );
+  }
+
+  // [REF: TEMPLATE_LOOKUP_ID_BRIDGE]
+  /// Picks the templates belonging to [category] out of [allTemplates].
+  ///
+  /// TEMPORARY in part — delete the name fallback in Chunk 6, alongside the
+  /// D19 establishment bridge.
+  ///
+  /// `ChecklistTemplate.categoryId` is new and the Hive box outlives the
+  /// binary, so a phone can hold templates cached without it. The window this
+  /// covers is narrower than it first looks, and worth stating exactly,
+  /// because it is what a Chunk 6 reader will judge the deletion against:
+  ///
+  ///  * **Not** "upgraded and still offline". That phone has no `categories`
+  ///    box either — it is new in this chunk too — so
+  ///    [REF: CATEGORY_PICKER_OPTIONS] has nothing to iterate and this
+  ///    function is never reached with a non-null category. The picker is
+  ///    empty for want of categories, not for want of ids, and the form says
+  ///    so in its own words.
+  ///  * The real trigger is a **partial sync**: the categories fetch succeeded
+  ///    and filled its box, then the establishments loop threw before the
+  ///    templates were replaced — reachable, since `Establishment.fromJson`
+  ///    casts `personnel_count` and `sanitary_permit_no`, the type drift Chunk
+  ///    1 wrote its parse-before-clear pass for.
+  ///
+  /// How much it recovers depends on when that box was last written, and the
+  /// two cases differ sharply:
+  ///
+  ///  * **Last synced on or after 2026-10-02**, when Chunk 2.5 was applied to
+  ///    production — the common case. The shipped binary rewrites each
+  ///    template's `category` from the live `categories` map on every sync, so
+  ///    such a box already holds all 193 templates under their *current*
+  ///    names. Name matching then recovers **every** category. Note the
+  ///    consequence: `'9' Food` matches `'1' Food`'s checklist while the
+  ///    fallback is active, so it offers a startable row and a log can be
+  ///    written against `category_id: '9'`. Bounded by one successful sync,
+  ///    and `'9'` goes away with D20.
+  ///  * **Dormant since before 2026-10-02.** That box holds 60 templates under
+  ///    the old names, so the two Chunk 2.5 renames (`Water`→Supermarkets,
+  ///    `Institutional`→Public Places) match nothing and `'11'`–`'17'` are
+  ///    absent entirely. Only Food recovers.
+  ///
+  /// The fallback is decided for the **whole box**, not per template, and that
+  /// distinction is the non-obvious part. A per-template fallback would let an
+  /// old-format `Food` template match both `'1'` and `'9'` — re-creating by
+  /// accident the exact name-collision hazard D24 removes. One box either
+  /// predates the field entirely or does not; mixed state only arises mid-sync,
+  /// and syncData replaces the box wholesale.
+  ///
+  /// Shared by the lookup and by the picker's template counting on purpose: if
+  /// they disagreed, a category could offer a row and then resolve to nothing,
+  /// or be hidden while its checklist was sitting in the box.
+  static List<ChecklistTemplate> resolveTemplatesFor({
+    required InspectionCategory? category,
+    required List<ChecklistTemplate> allTemplates,
+  }) {
+    if (category == null) return const [];
+
+    final boxCarriesIds =
+        allTemplates.any((t) => (t.categoryId ?? '').isNotEmpty);
+
+    if (boxCarriesIds) {
+      // A null id in a box that otherwise has them is a stray, not an old
+      // record, so it is left out rather than guessed at by name.
+      return allTemplates.where((t) => t.categoryId == category.id).toList();
+    }
+
+    final name = category.name.toLowerCase().trim();
+    if (name.isEmpty) return const [];
+    return allTemplates
+        .where((t) => t.category.toLowerCase().trim() == name)
         .toList();
   }
 }

@@ -39,7 +39,9 @@ A high-performance, offline-first Flutter mobile application tailored for City H
   - Tapping a record **starts its inspection**; there is no create, edit or delete. The web admin dashboard is the sole owner of establishment data, so the two clients can never blank each other's fields.
 
 - **Smart Inspection Forms**
-  - Dynamic rendering of checklists based on the specific category of the establishment (e.g., Public Places, Food, Supermarket).
+  - The checklist category is **chosen by the inspector when the inspection starts** (e.g. Food, Supermarkets, Public Places), not read off the establishment record, and is stored on the inspection log only.
+  - An offline keyword suggester reads the business name and proposes a category, showing the word it matched. It is a hint with a "Use suggestion" button — never a pre-filled field.
+  - A category with no checklist on the device, or whose items carry no demerit weights, is listed but **not selectable**, with the reason shown.
   - Categorized checklist sections and easy pass/fail judgments.
   - Real-time scoring and calculation engine that outputs immediate ratings (e.g., "Excellent").
 
@@ -95,6 +97,13 @@ App-wide configuration, theming, and constants.
 |---|---|
 | `env_config.dart` | **Placeholder file.** Previously held Supabase credentials. Now kept as a legacy placeholder after the Firebase migration. Firebase config is now in `firebase_options.dart`. Can be safely deleted. |
 
+#### `lib/core/` (root)
+
+| File | Purpose |
+|---|---|
+| `rating_scale.dart` | The three rating bands (`[REF: RATING_SCALE]`) — the only copy in the app, mirrored by the web dashboard's `src/lib/ratingScale.ts`. |
+| `category_suggester.dart` | Pure-Dart keyword rules (`[REF: CATEGORY_SUGGESTER]`) that propose a checklist category from a business name. **No imports at all** — no Flutter, no Hive, no Firestore. 129 rules across 9 category ids keyed on `categories` document ids; the longest matching keyword wins, ties fall to declaration order, and a suggestion carries the keyword that produced it. Returns nothing when it does not recognise the name, and nothing for a category that is not selectable on this device. Unit-tested in `test/category_suggester_test.dart`. |
+
 #### `lib/core/theme/`
 
 | File | Purpose |
@@ -112,17 +121,19 @@ All data layer logic: models, local storage, and remote API services.
 |---|---|
 | `establishment.dart` | Hive-persisted data model (`@HiveType(typeId: 0)`) for a registered establishment. 14 Hive field slots (0–13): `id`, `name`, `category`, `address`, `ownerName`, `personnelCount`, `personnelWithHc`, `sanitaryPermitNo`, `controlNo`, `barangay`, `categoryId`, `isSynced`, `createdAt`, `qrCodeId`. Includes `fromJson()` (Firestore → model) and **deliberately no `toJson()`** — the app only reads these documents. Nine of the fields are no longer rendered anywhere in the UI but **must stay declared**: dropping a `@HiveField` corrupts the existing box on every inspector's device. |
 | `establishment.g.dart` | Auto-generated Hive TypeAdapter for `Establishment`. Enables Hive box serialization. **Do not edit manually.** |
-| `checklist_template.dart` | Hive-persisted data model (`@HiveType(typeId: 1)`) for a single inspection checklist item. Fields: `id`, `category`, `subCategory`, `item` (question text), `weight` (demerit value on fail). Includes `fromJson()` for parsing Firestore data. |
+| `checklist_template.dart` | Hive-persisted data model (`@HiveType(typeId: 1)`) for a single inspection checklist item. Six Hive field slots (0–5): `id`, `category` (the name), `subCategory`, `item` (question text), `weight` (demerit value on fail), and `categoryId` — the `categories` document id the item belongs to, which is what the inspection form resolves a checklist by. `categoryId` is `String?` **because it has to be**: the box already ships on devices holding five-field records, and a non-nullable cast would throw on every read of one. Includes `fromJson()` for parsing Firestore data. |
 | `checklist_template.g.dart` | Auto-generated Hive TypeAdapter for `ChecklistTemplate`. **Do not edit manually.** |
-| `inspection_log.dart` | Plain Dart model (not Hive) for a completed inspection record. Fields: `id` (UUID auto-generated), `establishmentId`, `inspectorName`, `totalDemerits`, `percentageRating`, `remarks`, `inspectionDate`, `photoEvidenceUrl`, `localPhotoPath`, and `offlineResults` (embedded per-item results for offline replay). Provides `toJson()` for Hive queue and `toFirestoreJson()` which strips `offlineResults` before remote upload. |
+| `inspection_category.dart` | Hive-persisted data model (`@HiveType(typeId: 2)`) for one `categories` document — `id`, `name`, `sortOrder` (defaulting to 9999 so an unordered category sinks to the bottom) — plus the picker's availability rules: `CategoryUnavailableReason`, and `CategoryOption` with the pure static `evaluate()` and `compare()`. A category is unselectable when it has no checklist items on this device, or when every one of its items carries `weight: 0` so `100 - totalDemerits` cannot produce a score. Both rules are derived from the templates, never from a hardcoded document id. Unit-tested in `test/category_availability_test.dart`. |
+| `inspection_category.g.dart` | Auto-generated Hive TypeAdapter for `InspectionCategory`. **Do not edit manually.** |
+| `inspection_log.dart` | Plain Dart model (not Hive) for a completed inspection record. Fields: `id` (UUID auto-generated), `establishmentId`, `establishmentName`, `categoryId` and `categoryName` (which checklist it was scored against — both stored, because the document is an audit record that has to be readable *and* resolvable), `inspectorName`, `totalDemerits`, `percentageRating`, `remarks`, `inspectionDate`, `photoEvidenceUrl`, `localPhotoPath` and `results` (the embedded per-item answers). Two serializers: `toJson()` for Firestore, and `toQueueJson()` which adds `localPhotoPath` for the Hive offline queue only. The three nullable name/id fields are omitted rather than written as `null` when absent. |
 
 #### `lib/data/services/`
 
 | File | Purpose |
 |---|---|
 | `auth_service.dart` | Static service wrapping Firebase Auth. Methods: `signInWithGoogle()` (popup for Web, native for mobile), `signInWithEmailPassword()`, `signUpWithEmailPassword()` (also sets display name), `sendPasswordResetEmail()`, `signOut()`. Exposes `currentUser` and `authStateChanges` stream. |
-| `offline_service.dart` | Manages all local Hive storage and the **download** half of sync. Registers Hive adapters for `Establishment` and `ChecklistTemplate`. `syncData()` fetches categories, establishments and checklist templates from Firestore into local Hive boxes — parsing each snapshot *completely* before replacing its box, so a single type-drifted document can no longer leave the device with an empty cache. Its establishment pass carries `[REF: ESTABLISHMENT_UPGRADE_BRIDGE]`, a temporary branch that preserves an establishment an older build created offline (and never uploads it); it is removed one release from now. Read helpers: `readPref()`, `writePref()`, `getLocalEstablishments()`, `getEstablishmentById()`, `getLocalTemplatesByCategory()`. Exposes the `inspectionsQueueBox` for the offline submission queue. There are **no establishment write helpers**. |
-| `sync_service.dart` | The **upload** half of offline-first, plus the cloud reads the UI needs. Methods: `evidencePath()`, `uploadImage()` / `uploadBytes()` (Firebase Storage), `submitInspectionLog()`, `syncPendingInspections()` (drains the offline queue; deletes a local entry only after the Firestore write succeeds), `syncSingleInspection()`, `fetchCategories()`, `fetchInspectionHistory()`, `fetchInspectionDetails()`. **No establishment writes** — `insertEstablishment`, `updateEstablishment`, `deleteEstablishment` and `syncPendingEstablishments` were all removed; a comment where they used to be records that `establishments` is pull-only on mobile. Note `fetchCategories()` currently has no callers; it is kept for the planned inspection-time category picker. |
+| `offline_service.dart` | Manages all local Hive storage and the **download** half of sync. Registers Hive adapters for `Establishment`, `ChecklistTemplate` and `InspectionCategory`, and opens five boxes. `syncData()` fetches categories, establishments and checklist templates from Firestore into local Hive boxes — parsing each snapshot *completely* before replacing its box, so a single type-drifted document can no longer leave the device with an empty cache. The categories pass additionally **refuses to clear its box on an empty snapshot**, because an evicted offline cache resolves to empty rather than throwing and a clear would wipe a working picker; the establishment and template passes do not yet do this. Its establishment pass carries `[REF: ESTABLISHMENT_UPGRADE_BRIDGE]`, a temporary branch that preserves an establishment an older build created offline (and never uploads it); it is removed one release from now. Read helpers: `readPref()`, `writePref()`, `getLocalEstablishments()`, `getEstablishmentById()`, `getLocalCategoryOptions()` (the picker's rows, each already marked selectable or not), `getLocalTemplatesByCategoryId()` (the checklist for one category, **by document id**) and the shared `resolveTemplatesFor()`, which carries a temporary name-matching fallback (`[REF: TEMPLATE_LOOKUP_ID_BRIDGE]`) for a template box cached before `categoryId` existed. Exposes the `inspectionsQueueBox` for the offline submission queue. There are **no establishment write helpers**. |
+| `sync_service.dart` | The **upload** half of offline-first, plus the cloud reads the UI needs. Methods: `evidencePath()`, `uploadImage()` / `uploadBytes()` (Firebase Storage), `submitInspectionLog()`, `syncPendingInspections()` (drains the offline queue; deletes a local entry only after the Firestore write succeeds), `syncSingleInspection()`, `fetchInspectionHistory()`, `fetchInspectionDetails()`. **No establishment writes** — `insertEstablishment`, `updateEstablishment`, `deleteEstablishment` and `syncPendingEstablishments` were all removed. **No category read either:** `fetchCategories()` was deleted in Chunk 3, because the picker has to work in a dead zone and therefore reads the Hive box `OfflineService.syncData` fills. In both places a comment and a banner stay where the code was, recording that `establishments` is pull-only and that categories come from Hive. |
 
 ---
 
@@ -212,14 +223,15 @@ All user interface code: screens and reusable widgets.
 ---
 
 ##### `inspection_form_screen.dart`
-**Purpose:** The active inspection execution screen. Dynamically loads `ChecklistTemplate` items by establishment category and renders them as `ChecklistItemCard` widgets grouped by sub-category. The body is a `Column` of **two pinned blocks over one scrolling list**: an `EstablishmentBanner` identity strip (business name / owner / address), then the sticky real-time score header, then an `Expanded` `SingleChildScrollView` holding the checklist, a Remarks/Notes `TextFormField` and a Photo Evidence tap-to-capture section. A large "Submit Inspection" `ElevatedButton` sits in the bottom navigation bar. The app bar title is the establishment's business name.
+**Purpose:** The active inspection execution screen. The inspector **chooses the checklist category here** (`CategoryPicker`); the screen then loads that category's `ChecklistTemplate` items by document id and renders them as `ChecklistItemCard` widgets grouped by sub-category. Nothing on the establishment record decides which checklist is used. The body is a `Column` of **two pinned blocks over one scrolling list**: an `EstablishmentBanner` identity strip (business name / owner / address), then the sticky real-time score header, then an `Expanded` `SingleChildScrollView` holding the category picker, the checklist, a Remarks/Notes `TextFormField` and a Photo Evidence tap-to-capture section. The picker is deliberately *not* pinned (`[REF: CATEGORY_PICKER_PLACEMENT]`) — the two pinned blocks are already close to clipping the checklist on a small screen at a large text scale, and the category is chosen once at the start. A large "Submit Inspection" `ElevatedButton` sits in the bottom navigation bar. The app bar title is the establishment's business name.
 
 | Category | Details |
 |---|---|
-| Dialogs | None |
+| **Dialogs** | "Change checklist category?" (`[REF: CATEGORY_SWITCH]`) — shown only when switching would discard answers or deficiency notes already entered. Buttons: "Keep current checklist" / "Switch and clear". |
 | **Gesture Detectors** | `GestureDetector` on the Photo Evidence container → calls `_pickImage()` which opens the device camera via `image_picker`. |
 | **Scroll listener** | `ScrollController` on the checklist → `_onChecklistScroll()` (`[REF: BANNER_SCROLL_DENSITY]`) asks `EstablishmentBanner.densityFor(offset, current)` for the next banner density and `setState`s only on a real threshold crossing. |
-| **Snackbars** | Checklist incomplete: "Please answer all checklist items before submitting." Submit online success: "Submitted Successfully!". Saved offline: "Saved offline. Will sync later." |
+| **Snackbars** | Five submit guards, in this order: no categories cached ("No checklist categories on this device yet. Connect to the internet once to download them, then try again."), no category chosen ("Choose the checklist category for this inspection before submitting."), category not inspectable ("&lt;name&gt; cannot be submitted: &lt;reason&gt;."), no items for the chosen category, then checklist incomplete ("Please answer all checklist items before submitting."). Plus: picking a disabled category ("&lt;name&gt; cannot be inspected: &lt;reason&gt;."), submit online success ("Submitted Successfully!"), saved offline ("Saved offline. Will sync later.") and photo pending ("Submitted. Photo will upload when you have signal."). |
+| **Empty states** | Four, deliberately worded apart: no categories on the device; none of them has a checklist yet; no category chosen yet; and (currently unreachable, kept on purpose) no items for the chosen category. |
 
 > **Two things in `build()` that look like mistakes and are not.**
 >
@@ -289,6 +301,19 @@ Reusable UI components.
 | Dialogs | None |
 | **Gesture Detectors** | `GestureDetector` (inside `_SegmentButton`) on PASS → `provider.setAnswer(id, 'Pass')`. `GestureDetector` on FAIL → `provider.setAnswer(id, 'Fail')`. |
 | Alerts / Snackbars | None |
+
+---
+
+##### `category_picker.dart`
+**Purpose:** Chooses the checklist a live inspection is scored against (`[REF: CATEGORY_PICKER]`). A `DropdownMenu<String>` with `enableFilter` and `requestFocusOnTap`, so type-to-filter across the categories needs no extra package; entry values are `categories` **document ids**, not names. Rows for categories that cannot be inspected are rendered disabled **with their reason** rather than hidden (`[REF: CATEGORY_PICKER_EMPTY]` covers the separate case of a device that has never synced). Availability is not decided here — it arrives already decided on each `CategoryOption`, so the picker and the submit guard cannot disagree. Below the field, `[REF: CATEGORY_SUGGESTION_HINT]` shows "Suggested: &lt;category&gt; — matched &lt;keyword&gt;" with a "Use suggestion" button, and only while nothing is chosen: the suggestion is **never pre-selected**, because a pre-filled field records identically to a considered choice on an audit record.
+
+| Category | Details |
+|---|---|
+| Dialogs | None (the confirm-on-switch dialog lives on the screen, not here) |
+| **Callbacks** | `onSelected(CategoryOption)` → the screen's `_onCategorySelected`. Fires for both a menu pick and the "Use suggestion" button. A `null` id from `DropdownMenu` (submitted with nothing highlighted) is ignored. |
+| Alerts / Snackbars | None — the screen owns those |
+
+> **Known gap, documented in the file (lines 29–49).** `DropdownMenu` keeps its field text in its own `State` and offers no tap-outside hook, so typing a filter and tapping away without selecting — or highlighting a disabled row and pressing the keyboard's done key — can leave half-typed text in the field over a loaded checklist. It is **display only**: the submitted log takes its category from the screen's own state. Not fixed in this chunk because every candidate fix changes framework-interaction behaviour that cannot be verified without a running frame.
 
 ---
 

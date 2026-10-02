@@ -22,13 +22,14 @@ class ChecklistTemplateAdapter extends TypeAdapter<ChecklistTemplate> {
       subCategory: fields[2] as String,
       item: fields[3] as String,
       weight: fields[4] as int,
+      categoryId: fields[5] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, ChecklistTemplate obj) {
     writer
-      ..writeByte(5)
+      ..writeByte(6)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -38,7 +39,9 @@ class ChecklistTemplateAdapter extends TypeAdapter<ChecklistTemplate> {
       ..writeByte(3)
       ..write(obj.item)
       ..writeByte(4)
-      ..write(obj.weight);
+      ..write(obj.weight)
+      ..writeByte(5)
+      ..write(obj.categoryId);
   }
 
   @override
