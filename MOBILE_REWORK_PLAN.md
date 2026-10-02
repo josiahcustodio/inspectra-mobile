@@ -37,6 +37,10 @@ Related repos (NOT in this repo — do not edit them from a mobile session):
 | D17 | `establishments` write rule | **Stays `isAuthorized()`.** V1 investigation found the web admin lets officers create and edit. Narrowing to `isAdmin()` would lock them out. Mobile not writing is enforced by the absence of any write call, not by rules. |
 | D19 | Pre-Chunk-1 offline-created establishments | **Preserved locally for one release, never pushed.** `syncData` keeps a `!isSynced` bridge so an upgrading device does not lose a record the old add screen promised to sync. Not drained to Firestore — that would be the mobile write D2 removes. Bridge is deleted in Chunk 6. |
 | D18 | Dirty `categories` data | **Cleaned before the picker is built** (new Chunk 2.5), from the web/admin session. The picker then reads clean data with no special-casing. |
+| D20 | Establishment `category` / `category_id` | **Removed from Firestore entirely**, in the session after Chunk 2.5 — this supersedes the "cleanup, not a removal" line that used to close Chunk 2.5. Replaced by a plain display string carrying the city's own business classification (`Line/Kind of Business` in the LGU masterlists: `Retailer (Ice cream)`, `Refreshment Parlor`), which deliberately does **not** feed the checklist pipeline. The historical scheme never matched the checklist types, which is why coupling them was wrong. |
+| D21 | Source of `categories` and `checklist_templates` | **`Downloads/Inspectra/checklists.xlsx` is authoritative** for both category names and checklist items. 10 blocks: 9 `DEMERITS` forms of 20 items at weight 5 (20 x 5 = 100), plus Livestock Farm. Re-seeding is a scripted operation, never hand-entry. |
+| D22 | Livestock Farm form model | **Seeded as its 13 numbered items only, at `weight: 0`.** The `COMPLIANT (  /  )` column is ruled against the numbered rows, so the 38 fill-in sub-lines are evidence for each mark, not separately scored items. No demerit weighting has ever been published for this form; inventing one to reach 100 would fabricate regulatory data. **Consequence: a completed livestock inspection currently displays 100 / Excellent.** Fixing that needs a per-category scoring mode — its own chunk, and a prerequisite nothing in this plan anticipated. |
+| D23 | Source-document typos | **Preserved verbatim** so item text matches the paper form in an inspector's hand. Reported in the seeding transcript, never silently corrected. Known: `SANTARY TOILET FACILITIES` (Port 7), `DISINFECTION IF THE DISTRIBUTION SYSTEM` (Vessel 4), `EQUIPMENTS AND UTENSILS` (Vessel 10), `CARE AND PREPARATION FOOD` (Day Care 13), `Blogas Digester` (Livestock 6), plus pre-existing `Receptable` in live template `'54'`. |
 
 ---
 
@@ -227,13 +231,41 @@ free-text `category` strings with category_id = null (1 establishment each)
 type drift — 3 establishments store category_id as the NUMBER 1, not '1'
 ```
 
-| Action | Notes |
+> **APPLIED 2026-10-02 — and this section's central premise was wrong.** What was
+> actually done is in the table below; superseded rows are struck through so the
+> correction stays legible. Section 6 has the verified end state.
+
+**The premise that was wrong.** Nothing resolves a checklist by `category_id`.
+`inspection_form_screen.dart:51-52` passes `establishment.category` — the **name
+string** — into `OfflineService.getLocalTemplatesByCategory`
+(`offline_service.dart:212`), which compares it case-insensitively against
+`ChecklistTemplate.category`. `syncData` already rewrites each establishment's
+`category` from the matching `categories` doc name, so the 14 docs on `'9'`
+resolve to `Food` and have **always** found the 20 Food templates. They were never
+broken, and repointing them would have repaired nothing. `category_id` was already
+vestigial on this path — which is the real argument for D20.
+
+Two further consequences of name-based lookup:
+
+- Creating a category whose name matches an establishment's existing free-text
+  `category` silently gives it a working form. `Brizamar beach resort`
+  (`category='Swimming Pool and Bathhouse'`, `category_id=null`) went from an empty
+  form to the new 20-item checklist with no establishment write at all.
+- Two categories sharing a name **merge** their templates into one form. That is what
+  made the 8 duplicate `Food` docs dangerous. `'9'` survives as a second `Food` only
+  because it has zero templates; **adding templates to it would corrupt the real Food
+  checklist.**
+
+| Action | Outcome |
 |---|---|
-| Delete the 7 duplicate `Food` docs (`4`–`8`, `10`, and `9` last) | Keep `'1'`, `'2'`, `'3'` — the only ids with templates. |
-| Repoint the 14 establishments off `category_id '9'` onto `'1'` | They are already named `Food`; this is the move that makes a checklist appear for them. |
-| Normalize `category_id` to a **string** everywhere | 3 establishments hold the number `1`. Any string-keyed lookup misses them today. |
-| Decide `Others` / `Swimming Pool and Bathhouse` | 2 establishments carry these as free text. Either add real category docs with templates, or map them onto an existing category. Not a silent drop. |
-| One-off admin script, not app code | Run from the web/admin session. The mobile app never writes `establishments` (D2) or `categories` (rules already `isAdmin()`). |
+| Rename `'2' 'Water'` -> `Supermarkets` and `'3' 'Institutional'` -> `Public Places` | **Done.** Not in the original plan. Their 20 items each were already, verbatim, the xlsx's SUPERMARKETS and PUBLIC PLACES checklists — the names were lies. Neither had ever been used by an inspection, so correcting them was safe. |
+| Delete 6 duplicate `Food` docs (`'4'`-`'8'`, `'10'`) | **Done.** Verified orphans — no establishment or template referenced any of them. |
+| Seed the 7 missing categories + 133 templates from `checklists.xlsx` | **Done.** Not in the original plan, which assumed only 3 checklist types existed. |
+| ~~Delete `'9'`~~ | **Deliberately NOT done.** 14 establishments still reference it and `establishments` was out of scope. Parked at `sort_order 999`. Deleting it is mobile-safe (`syncData`'s fallback leaves `category='Food'` intact); the only cost is the web admin's dropdown rendering empty when an officer edits one of those 14. Re-run with `--delete-nine`, or let the D20 session drop the field first. |
+| ~~Repoint the 14 establishments off `category_id '9'` onto `'1'`~~ | **Not done, and not needed** — see the premise correction above. |
+| ~~Normalize `category_id` to a string everywhere~~ | **Not done.** Out of scope once establishments were deferred; 3 docs still hold the int `1` and 2 hold null. D20 removes the field, so this is moot. |
+| ~~Decide `Others` / `Swimming Pool and Bathhouse`~~ | **Superseded.** `Swimming Pool and Bathhouse` turned out to be a real checklist type in the xlsx and is now category `'11'` with 20 templates. `Others` was never a checklist type; `zafra` still opens an empty form, and D20 moves that string to the display-only column. |
+| One-off admin script, not app code | **Done.** `inspectra-web` at `scripts/chunk25_categories_cleanup.py`, dry-run by default, `--apply` to write. Needed **no** web app code change. |
 
 **One hazard to close while you are in there.** `SyncService.fetchCategories` already
 dedupes by name, but it keeps the *first* doc id seen per name. Only ids `1`-`3` have
@@ -241,9 +273,13 @@ templates, so the picker is correct today only because Firestore returns doc ids
 lexicographic order and `'1'` sorts ahead of `'10'` and `'4'`. Deleting the duplicates
 removes the coincidence this relies on.
 
-Establishment `category` / `category_id` stay on the documents — Chunk 3 stops *reading*
-them for the inspection (D4), but the web admin still shows the category badge, so this
-is a cleanup, not a removal.
+~~Establishment `category` / `category_id` stay on the documents — Chunk 3 stops
+*reading* them for the inspection (D4), but the web admin still shows the category
+badge, so this is a cleanup, not a removal.~~ **Superseded by D20:** both fields come
+off the documents entirely in the next session, replaced by a display-only business
+classification string. The web admin reads `establishment.category` in three places
+(`Establishments.tsx:113`, `EstablishmentHistoryModal.tsx:225`, and the whole category
+dropdown in `AddEstablishmentModal.tsx`), so D20 is a web code change too.
 
 ### Chunk 3 — Category picked at inspection time
 
@@ -432,19 +468,60 @@ that are not in this document.
 | 2026-10-01 | V1/V2 | Both resolved by investigation. V1 → D17 (rule stays `isAuthorized()`; the web admin lets officers write). V2 → D18 + new Chunk 2.5 (`categories` is authoritative but dirty: 8 duplicate `Food` docs, templates only on ids 1–3, no catch-all, `category_id` type drift). |
 | 2026-10-02 | 2 — establishment banner | **Committed.** New `establishment_banner.dart` with a three-step density ladder; mounted above the score header on the live form only (D16), name/owner/address only (D1). Review corrected the plan's 76pt score-header estimate to **~96pt** and found that the `Column`/`Expanded` body clips the checklist outright at 320x568 / scale 2.0 with the keyboard up — hence `[REF: BANNER_KEYBOARD_YIELD]` and the deliberate app-bar name duplication that backs it. `flutter analyze` clean. Docs + new walkthrough at §E.32. **No device or emulator run — every pixel figure in this chunk is derived from source, not observed, and `densityFor` has no test.** |
 | 2026-10-01 | 1 — read-only establishments | **Committed.** D1/D2/D3 done. Add/edit screen and both routes deleted; create/edit unreachable from all five entry points; UI trimmed to name/owner/address. Review found two real defects beyond the spec: the "now-dead" preservation branch was not dead (→ D19 upgrade bridge) and `qr_scanner_screen` still rendered the category. `syncData` now parses before clearing, for establishments and templates both. `flutter analyze` clean (2 pre-existing infos in `profile_screen.dart`). Docs + README updated. **Not run on a device.** |
+| 2026-10-02 | 2.5 — `categories` data cleanup | **Applied to production and verified.** Different repo (`inspectra-web`), no mobile code touched. 190 ops in one atomic batch; 53 post-apply assertions, 0 failures. Re-probing first confirmed the plan's numbers but disproved its premise (see the Chunk 2.5 correction) and found the live category *names* mislabeled: `'2' 'Water'` actually held the SUPERMARKETS checklist and `'3' 'Institutional'` held PUBLIC PLACES, verbatim, neither ever used by an inspection. Renamed both; deleted 6 orphan `Food` dupes; created `'11'`-`'17'` + 133 templates from `checklists.xlsx`; fixed 40 stale denormalized `category` strings; added `sort_order` to every category. End state: **11 categories, 193 templates**. `establishments` / `inspection_logs` never written — all 440 historical `checklist_item_id` references still resolve, 0 dangling. CODER/REVIEWER protocol ran; the review found no correctness defect but caught a false claim in the pre-apply transcript, and 8 fixes were applied before writing. The mid-session xlsx replacement (Livestock filled in) was re-parsed and its 13 items verified by hand against the sheet, but that delta was **not independently re-reviewed**. Script, full pre-apply diff and audit log in `inspectra-web` at `scripts/chunk25_*`. **No device or emulator run.** |
 
 ## 7. Open items
 
-**Next session is Chunk 2.5, and it is in a different repo** (`inspectra-web` / the admin
-scripts), not here. Chunk 3 must not start before it lands — it is what makes the
-category picker's data fit to pick from.
+**Chunk 2.5 landed 2026-10-02. Next session is Chunk 3, and the order is forced.**
 
-Carried forward, none blocking:
+**D20 cannot go first.** `inspection_form_screen.dart:52` passes
+`establishment.category` into `OfflineService.getLocalTemplatesByCategory`, and that is
+the *only* input to the *only* template lookup in the app. Strip the field before a
+picker exists and **every** inspection form renders empty, for every establishment —
+not just the two strays. So:
+
+1. **Chunk 3 — the category picker** (mobile repo). Now unblocked: `categories` is
+   clean, uniquely named, and carries `sort_order`. This is also what severs the form's
+   dependency on `establishment.category`, which is what makes D20 safe.
+   **New prerequisite nothing in this plan anticipated:** the picker will offer Livestock
+   Farm, which has no working score (D22). Either fix the per-category scoring mode in
+   this chunk or exclude `'17'` from the picker and say so in the state log.
+2. **D20 — strip `category` / `category_id` off `establishments`** and add the
+   display-only business-classification string (`inspectra-web` + a one-off script;
+   three read sites listed at the end of Chunk 2.5). Only after Chunk 3 ships.
+
+Carried forward. The two Livestock items below are blocking for anything that touches
+livestock farms; the rest are not blocking:
 
 - **Chunks 1 and 2 have never run on a device.** Both were analyzer-clean and
   review-clean, but every layout figure in Chunk 2 is computed from source rather than
   observed, and Chunk 1's upgrade bridge cannot occur on a fresh install. The Chunk 6
   device pass is the first time either is exercised.
+- **Livestock Farm displays a false score of 100** (D22). `RatingProvider.score` is
+  `100 - totalDemerits` (`rating_provider.dart:56-66`) and every livestock item is
+  weight 0. Currently gated: the lookup is by category name and no establishment is
+  named `Livestock Farm`, so no inspector can reach the form until an admin assigns
+  that category in the web dropdown. **Fix the scoring mode before anyone does.**
+- **The 38 Livestock sub-fields are captured nowhere.** 30 are plain checkboxes, but 8
+  need input types the Pass/Fail/NA card cannot express: 5 measurements
+  (`_____m, Septic Tank (Domestic)`, `Distance:______radius`), 2 free-text
+  (`Type of Water Source:`, `Trees:`), 1 exclusive choice (`______uphill ______downhill`).
+  Capturing them needs a response type per item plus a parent-child relation — additive
+  `@HiveField` numbers on `ChecklistTemplate`, never renumbering the existing 0-4.
+- **`sort_order` is written but unread.** `mapCategory` (`firestore.ts:34`) drops it and
+  `useCollection` issues no `orderBy`, so the web dropdown is still in doc-id order
+  (`'1'`, `'11'`, `'12'`, ... `'2'`, `'3'`). Chunk 3's picker should read it; the web
+  admin should too.
+- **The xlsx precondition gate is title + item-count only.** An edited item *wording*
+  would pass and be seeded silently. A content hash over the source cells would close it.
+- **`SyncService.fetchCategories`' dedupe-by-name is no longer load-bearing** — category
+  names are unique now, except the held-back `'9' 'Food'`, which has no templates. The
+  `[REF: CATEGORY_LOOKUP]` comment still describes the old lexicographic coincidence and
+  should be updated when Chunk 3 picks the function back up.
+- **5 `inspection_logs` point at establishment ids that no longer exist**, and every log
+  stores its results twice (a `results[]` array of 440 rows plus an `inspection_results`
+  sub-collection of 340). Both found incidentally during the Chunk 2.5 probe, both out of
+  scope, neither investigated.
 - **`assets/data/batangas_psgc.json` is orphaned.** The deleted barangay picker was its
   only consumer and nothing in `lib/` loads any asset now, but it is still declared in
   `pubspec.yaml`. Dropping both is a free size win; left alone because `pubspec.yaml` was
