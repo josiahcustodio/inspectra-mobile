@@ -274,6 +274,11 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
 
   // [REF: INSPECTION_SUBMIT]
   Future<void> _submitForm() async {
+    // Re-entrance defence on top of the disabled button: the button's
+    // onPressed gate only takes effect after a setState has rebuilt it, so
+    // a second tap racing the first one's build can still land here.
+    if (_isSubmitting) return;
+
     final ratingProvider = Provider.of<RatingProvider>(context, listen: false);
 
     // Guard order is load-bearing, not tidiness. `score` returns null whenever
@@ -357,6 +362,17 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
       return;
     }
 
+    // The flag goes up BEFORE the first await in this method. The signature
+    // export below genuinely yields to the event loop, and the submit button
+    // is still enabled until a setState lands — so flipping the flag any
+    // later leaves a window where a double-tap runs two interleaved
+    // _submitForm calls, each minting its own UUID and writing its own
+    // inspection_logs document. Every return path from here on must clear
+    // the flag.
+    setState(() {
+      _isSubmitting = true;
+    });
+
     // [REF: SIGNATURE_SUBMIT_GUARD]
     // Last in the ladder, after completeness: the sign-off is what makes the
     // record official (it replaces the wet-ink SSSR column of the paper
@@ -369,16 +385,13 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
         _signatureBytes ?? await _signatureKey.currentState?.exportIfDrawn();
     if (!mounted) return;
     if (signatureBytes == null) {
+      setState(() => _isSubmitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
             content: Text('Please add your signature before submitting.')),
       );
       return;
     }
-
-    setState(() {
-      _isSubmitting = true;
-    });
 
     String finalRemarks = _remarksController.text.trim();
     if (ratingProvider.itemNotes.isNotEmpty) {
@@ -405,6 +418,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
       photoUrl = await SyncService.uploadImage(
         _evidenceImage!,
         SyncService.evidencePath(widget.establishment.id),
+        'image/jpeg',
       );
     }
 
@@ -437,6 +451,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
       signatureUrl = await SyncService.uploadImage(
         sigFile,
         SyncService.signaturePath(widget.establishment.id, logId),
+        'image/png',
       );
       if (signatureUrl == null) {
         localSignaturePath = sigFile.path;

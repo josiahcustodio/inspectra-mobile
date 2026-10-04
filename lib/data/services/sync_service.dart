@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
+import 'package:hive/hive.dart';
 import '../models/inspection_log.dart';
 import 'offline_service.dart';
 
@@ -33,10 +34,19 @@ class SyncService {
 
   // [REF: PHOTO_UPLOAD]
   /// Uploads a [File] to Firebase Storage at [path] and returns its public URL.
-  static Future<String?> uploadImage(File imageFile, String path) async {
+  ///
+  /// [contentType] is required, not inferred: on Android putFile resolves the
+  /// type through ContentResolver, which returns null for a plain file path,
+  /// and the upload goes out as application/octet-stream — which
+  /// storage.rules rejects on both the `signatures/` prefix (exactly
+  /// image/png) and `inspection_evidence/` (image/.*). iOS infers the type
+  /// from the file extension, which is why an un-pinned upload can pass a
+  /// desk test and still fail on every Android device in the field.
+  static Future<String?> uploadImage(
+      File imageFile, String path, String contentType) async {
     try {
       final ref = _storage.ref().child(path);
-      await ref.putFile(imageFile);
+      await ref.putFile(imageFile, SettableMetadata(contentType: contentType));
       return await ref.getDownloadURL();
     } catch (e) {
       debugPrint('Upload image failed: $e');
@@ -68,38 +78,47 @@ class SyncService {
   ///
   /// Mutates [data] in place: on success it fills in `photo_evidence_url` and
   /// drops `local_photo_path`, so the record written to Firestore never
-  /// carries a device-local file path.
+  /// carries a device-local file path. `mutated` reports whether anything in
+  /// [data] changed, because the caller owes every mutation a durable
+  /// checkpoint back into the queue — an earned URL that exists only in this
+  /// in-memory map is lost the moment a later step throws, and the retry
+  /// would pay for the upload a second time, to a fresh timestamped path.
   ///
-  /// Returns false only when the photo genuinely still needs another attempt,
-  /// which keeps the inspection in the queue. If the staged file has been
-  /// deleted from the device (cache cleared, OS reclaimed temp space) the
-  /// photo is unrecoverable, so this returns true and lets the inspection sync
-  /// without it — holding the whole record hostage to a file that no longer
-  /// exists would be worse.
-  static Future<bool> _uploadStagedPhoto(Map<String, dynamic> data) async {
+  /// `ready: false` only when the photo genuinely still needs another
+  /// attempt, which keeps the inspection in the queue (and never coincides
+  /// with a mutation). If the staged file has been deleted from the device
+  /// (cache cleared, OS reclaimed temp space) the photo is unrecoverable, so
+  /// this reports ready and lets the inspection sync without it — holding the
+  /// whole record hostage to a file that no longer exists would be worse.
+  static Future<({bool ready, bool mutated})> _uploadStagedPhoto(
+      Map<String, dynamic> data) async {
     final localPath = data['local_photo_path'] as String?;
     final existingUrl = data['photo_evidence_url'] as String?;
 
-    if (localPath == null || localPath.isEmpty) return true;
+    if (localPath == null || localPath.isEmpty) {
+      return (ready: true, mutated: false);
+    }
     if (existingUrl != null && existingUrl.isNotEmpty) {
       data.remove('local_photo_path');
-      return true;
+      return (ready: true, mutated: true);
     }
 
     final file = File(localPath);
     if (!file.existsSync()) {
       debugPrint('Staged photo missing from device, syncing without it: $localPath');
       data.remove('local_photo_path');
-      return true;
+      return (ready: true, mutated: true);
     }
 
     final estId = data['establishment_id'] as String? ?? 'unknown';
-    final url = await uploadImage(file, evidencePath(estId));
-    if (url == null) return false; // still offline — retry on the next sync
+    final url = await uploadImage(file, evidencePath(estId), 'image/jpeg');
+    if (url == null) {
+      return (ready: false, mutated: false); // still offline — retry next sync
+    }
 
     data['photo_evidence_url'] = url;
     data.remove('local_photo_path');
-    return true;
+    return (ready: true, mutated: true);
   }
 
   // [REF: OFFLINE_SIGNATURE_RETRY]
@@ -115,30 +134,33 @@ class SyncService {
   /// InspectionLog.toJson's pairing rule must never see a hash it could
   /// accidentally write next to a future, different image.
   ///
-  /// When this call uploads the staged PNG it does NOT delete it; the file
-  /// comes back as [uploadedStagedFile] instead. Until the caller has made
-  /// the earned URL durable — by writing the mutated entry back to the queue
-  /// — that file is the only copy of the signature anywhere, and destroying
-  /// it here would hand a crash or a failed Firestore write straight to the
-  /// missing-file branch above, which would then strip the signature for
-  /// good.
-  static Future<({bool ready, File? uploadedStagedFile})>
+  /// The other divergence: a successful upload keeps `local_signature_path`
+  /// in [data] alongside the new `signature_url`, so the caller's checkpoint
+  /// persists BOTH. The invariant: a staged file may only be deleted once
+  /// the URL that replaces it is durable in the queue entry. The file is
+  /// destroyed along exactly two paths — by [_syncQueueEntry] after the
+  /// queue entry itself is deleted, or by the already-has-URL branch below
+  /// on the next drain, when a failed Firestore write left the checkpointed
+  /// entry behind. (The lingering path key never reaches Firestore:
+  /// InspectionLog.toJson has no `local_signature_path` output at all.)
+  static Future<({bool ready, bool mutated, File? uploadedStagedFile})>
       _uploadStagedSignature(Map<String, dynamic> data) async {
     final localPath = data['local_signature_path'] as String?;
     final existingUrl = data['signature_url'] as String?;
 
     if (localPath == null || localPath.isEmpty) {
-      return (ready: true, uploadedStagedFile: null);
+      return (ready: true, mutated: false, uploadedStagedFile: null);
     }
     if (existingUrl != null && existingUrl.isNotEmpty) {
+      // A previous drain uploaded this signature, checkpointed URL + path to
+      // the queue, and then failed the Firestore write (or died). The URL is
+      // durable in this entry, so the staged copy has served its purpose —
+      // delete it here or nothing ever will.
       data.remove('local_signature_path');
-      // A previous drain earned this URL, checkpointed it to the queue, and
-      // died before its cleanup ran. The URL is durable, so the staged copy
-      // is now just a leftover — delete it here or nothing ever will.
       try {
         File(localPath).deleteSync();
       } catch (_) {}
-      return (ready: true, uploadedStagedFile: null);
+      return (ready: true, mutated: true, uploadedStagedFile: null);
     }
 
     final file = File(localPath);
@@ -147,23 +169,23 @@ class SyncService {
           'Staged signature missing from device, syncing without it: $localPath');
       data.remove('local_signature_path');
       data.remove('signature_sha256');
-      return (ready: true, uploadedStagedFile: null);
+      return (ready: true, mutated: true, uploadedStagedFile: null);
     }
 
-    // The id is always a real UUID here: the legacy-id patch in the callers
-    // only nulls ids from the pre-UUID era, and no log of that era can carry
-    // a staged signature.
+    // The id is always a real UUID here: the legacy-id patch in
+    // _syncQueueEntry only nulls ids from the pre-UUID era, and no log of
+    // that era can carry a staged signature.
     final estId = data['establishment_id'] as String? ?? 'unknown';
     final logId = data['id'] as String? ?? 'unknown';
-    final url = await uploadImage(file, signaturePath(estId, logId));
+    final url =
+        await uploadImage(file, signaturePath(estId, logId), 'image/png');
     if (url == null) {
       // still offline — retry on the next sync
-      return (ready: false, uploadedStagedFile: null);
+      return (ready: false, mutated: false, uploadedStagedFile: null);
     }
 
     data['signature_url'] = url;
-    data.remove('local_signature_path');
-    return (ready: true, uploadedStagedFile: file);
+    return (ready: true, mutated: true, uploadedStagedFile: file);
   }
 
   // ─── Inspection Logs ────────────────────────────────────────────────────────
@@ -183,6 +205,90 @@ class SyncService {
     }
   }
 
+  /// Drains one queue entry end to end. The single owner of the per-item
+  /// protocol — [syncPendingInspections] and [syncSingleInspection] both
+  /// delegate here, so the ordering below can never again be fixed in the
+  /// bulk path and silently missed in the per-item retry path (or vice
+  /// versa).
+  ///
+  /// The order is the contract, not tidiness:
+  ///
+  ///  1. legacy-id patch
+  ///  2. staged photo upload, then staged signature upload
+  ///  3. checkpoint the entry back into the queue IF either upload mutated
+  ///     it — before any early return and before Firestore, so an earned
+  ///     URL is durable the moment it exists. Skipped when nothing changed:
+  ///     an attachment-less inspection must not pay a disk write (and a
+  ///     queue-listener UI rebuild) per drain attempt.
+  ///  4. bail out (entry stays queued) if either attachment still needs a
+  ///     retry — the record and its evidence leave the queue together or
+  ///     not at all.
+  ///  5. Firestore set(merge: true) — idempotent upsert.
+  ///  6. delete the queue entry ONLY after Firestore succeeded.
+  ///  7. only now delete the staged signature PNG: the URL that replaces it
+  ///     is durable in Firestore and nothing references the file. Failing
+  ///     to delete costs kilobytes, not correctness, so it is swallowed.
+  ///
+  /// Returns true when the entry fully synced and left the queue. Throws
+  /// are left to the callers, whose failure handling differs.
+  static Future<bool> _syncQueueEntry(
+      Box<String> box, dynamic key, String jsonString) async {
+    final Map<String, dynamic> data = jsonDecode(jsonString);
+
+    // Patch old invalid UUID format
+    if (data['id'] != null && data['id'].toString().contains('_')) {
+      data['id'] = null;
+    }
+
+    final photo = await _uploadStagedPhoto(data);
+    if (!photo.ready) {
+      // A not-ready photo never mutated anything, so there is nothing to
+      // checkpoint yet and the signature attempt would fail on the same
+      // dead network — leave the entry exactly as found.
+      debugPrint('Photo for queue item $key still pending upload; retrying later.');
+      return false;
+    }
+
+    final signature = await _uploadStagedSignature(data);
+
+    if (photo.mutated || signature.mutated) {
+      // The uploads above earned URLs (or shed dead keys) that exist
+      // nowhere but this in-memory map. Make that durable before anything
+      // else can fail: a photo URL checkpointed here survives a signature
+      // that is still pending, and a signature URL survives a Firestore
+      // write that throws — without this, the next drain would retry from
+      // the original JSON and re-upload evidence it already paid for.
+      await box.put(key, jsonEncode(data));
+    }
+
+    if (!signature.ready) {
+      debugPrint(
+          'Signature for queue item $key still pending upload; retrying later.');
+      return false;
+    }
+
+    // local_signature_path may still be in `data` here (kept so the
+    // checkpoint above persists it next to its URL); InspectionLog.toJson
+    // has no such output, so it cannot leak into Firestore.
+    final log = InspectionLog.fromJson(data);
+
+    await _db
+        .collection('inspection_logs')
+        .doc(log.id)
+        .set(log.toJson(), SetOptions(merge: true));
+
+    // Delete from local queue ONLY on success
+    await box.delete(key);
+
+    final staged = signature.uploadedStagedFile;
+    if (staged != null) {
+      try {
+        staged.deleteSync();
+      } catch (_) {}
+    }
+    return true;
+  }
+
   /// Syncs all pending inspections from the local Hive queue to Firestore.
   // [REF: OFFLINE_SYNC_QUEUE]
   static Future<bool> syncPendingInspections() async {
@@ -193,68 +299,12 @@ class SyncService {
     final Map<dynamic, String> entries = box.toMap();
 
     for (final entry in entries.entries) {
-      final key = entry.key;
-      final jsonString = entry.value;
-
       try {
-        final Map<String, dynamic> data = jsonDecode(jsonString);
-
-        // Patch old invalid UUID format
-        if (data['id'] != null && data['id'].toString().contains('_')) {
-          data['id'] = null;
-        }
-
-        // Upload any photo that was captured while offline, before writing the
-        // log. If the upload can't happen yet, leave this item queued so both
-        // the record and its evidence are retried together.
-        final photoReady = await _uploadStagedPhoto(data);
-        if (!photoReady) {
-          debugPrint('Photo for queue item $key still pending upload; retrying later.');
+        if (!await _syncQueueEntry(box, entry.key, entry.value)) {
           allSuccess = false;
-          continue;
-        }
-
-        // Same retry-together semantics as the photo: the record and its
-        // sign-off leave the queue in one piece or not at all.
-        final signature = await _uploadStagedSignature(data);
-        if (!signature.ready) {
-          debugPrint(
-              'Signature for queue item $key still pending upload; retrying later.');
-          allSuccess = false;
-          continue;
-        }
-
-        // Checkpoint the mutated entry BEFORE the Firestore write. The
-        // uploads above may have earned URLs that exist nowhere but this
-        // in-memory map; if the set() below throws, the next drain must find
-        // them here — otherwise it would retry from the original JSON, whose
-        // staged-signature path points at a file the cleanup below deletes,
-        // and the missing-file forgiveness would sync the record unsigned.
-        await box.put(key, jsonEncode(data));
-
-        final log = InspectionLog.fromJson(data);
-
-        // Use merge: true for idempotent upsert behaviour
-        await _db
-            .collection('inspection_logs')
-            .doc(log.id)
-            .set(log.toJson(), SetOptions(merge: true));
-
-        // Delete from local queue ONLY on success
-        await box.delete(key);
-
-        // Only now is the staged PNG safe to destroy: its URL is durable in
-        // Firestore and the queue no longer references the file. Failing to
-        // delete costs kilobytes, not correctness, so the failure is
-        // swallowed.
-        final staged = signature.uploadedStagedFile;
-        if (staged != null) {
-          try {
-            staged.deleteSync();
-          } catch (_) {}
         }
       } catch (e) {
-        debugPrint('Failed to sync queue item $key: $e');
+        debugPrint('Failed to sync queue item ${entry.key}: $e');
         allSuccess = false;
         // Do not break; attempt others
       }
@@ -272,51 +322,7 @@ class SyncService {
     if (jsonString == null) return false;
 
     try {
-      final Map<String, dynamic> data = jsonDecode(jsonString);
-
-      // Patch old invalid UUID format
-      if (data['id'] != null && data['id'].toString().contains('_')) {
-        data['id'] = null;
-      }
-
-      // Same photo-first ordering as syncPendingInspections.
-      final photoReady = await _uploadStagedPhoto(data);
-      if (!photoReady) {
-        debugPrint('Photo for queue item $key still pending upload; retrying later.');
-        return false;
-      }
-
-      // Same retry-together semantics as the photo: the record and its
-      // sign-off leave the queue in one piece or not at all.
-      final signature = await _uploadStagedSignature(data);
-      if (!signature.ready) {
-        debugPrint(
-            'Signature for queue item $key still pending upload; retrying later.');
-        return false;
-      }
-
-      // Checkpoint before the Firestore write, for the same reason as in
-      // syncPendingInspections: an earned URL must survive a failed set().
-      await box.put(key, jsonEncode(data));
-
-      final log = InspectionLog.fromJson(data);
-
-      await _db
-          .collection('inspection_logs')
-          .doc(log.id)
-          .set(log.toJson(), SetOptions(merge: true));
-
-      // Delete from local queue ONLY on success
-      await box.delete(key);
-
-      // URL durable in Firestore, queue entry gone — the staged copy may go.
-      final staged = signature.uploadedStagedFile;
-      if (staged != null) {
-        try {
-          staged.deleteSync();
-        } catch (_) {}
-      }
-      return true;
+      return await _syncQueueEntry(box, key, jsonString);
     } catch (e) {
       debugPrint('Failed to sync single item $key: $e');
       return false;

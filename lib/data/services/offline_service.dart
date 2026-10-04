@@ -141,11 +141,21 @@ class OfflineService {
         // of the box entirely; a copy cached before it was delisted falls out
         // via the deleteAll below, exactly as an admin-deleted doc would.
         //
-        // A client-side skip and not a Firestore query, deliberately: the
-        // field is new, so `where('status' == 'active')` would also drop
-        // every legacy document written before it existed — which today is
-        // all of them.
-        if (data['status'] == 'delisted') continue;
+        // An allowlist, not `== 'delisted'`, because the status vocabulary is
+        // owned by the web repo (models.ts) and nothing pins the two codebases
+        // together: when the web admin grows a second terminal status
+        // ('closed', 'suspended'), an equality test here would fail OPEN and
+        // keep offering that business for inspection — silently, since mobile
+        // still compiles and every test still passes. Unknown statuses hide
+        // instead. `null` must stay allowed: legacy documents predate the
+        // field entirely.
+        //
+        // A client-side skip and not a Firestore query, deliberately: a
+        // `where('status' == 'active')` query would also drop every legacy
+        // document written before the field existed — which today is most of
+        // them.
+        final status = data['status'];
+        if (status != null && status != 'active') continue;
 
         // Robust category resolution
         String? catId = data['category_id']?.toString();

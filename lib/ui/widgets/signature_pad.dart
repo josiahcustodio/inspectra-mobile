@@ -74,8 +74,37 @@ class SignaturePadWidgetState extends State<SignaturePadWidget> {
     super.dispose();
   }
 
-  /// Exports whatever is on the pad, saved or not. Null only when the pad is
-  /// genuinely blank.
+  /// Whether the pad holds a deliberate mark, not just an accidental touch.
+  ///
+  /// `_controller.isEmpty` is not enough as a required-signature gate: the
+  /// package registers a point on bare pointer-down and swallows vertical
+  /// drags (its pad wraps a no-op onVerticalDragUpdate), so an inspector who
+  /// merely brushed the pad while scrolling the form leaves a ~3px dot — and
+  /// that dot would satisfy "signature required" on a government record with
+  /// an effectively blank PNG. Any deliberate initial is tens of points
+  /// spanning far more than 20 logical px; a stray brush is a dot or a
+  /// couple of points. Either threshold alone would do; both are checked so
+  /// a slow, tiny-but-real mark (many points) and a fast flick (few points,
+  /// real extent) both pass.
+  bool get _hasRealStrokes {
+    final points = _controller.points;
+    if (points.isEmpty) return false;
+    if (points.length >= 10) return true;
+    var minX = double.infinity, minY = double.infinity;
+    var maxX = -double.infinity, maxY = -double.infinity;
+    for (final p in points) {
+      final o = p.offset;
+      if (o.dx < minX) minX = o.dx;
+      if (o.dy < minY) minY = o.dy;
+      if (o.dx > maxX) maxX = o.dx;
+      if (o.dy > maxY) maxY = o.dy;
+    }
+    return (maxX - minX) + (maxY - minY) >= 20;
+  }
+
+  /// Exports whatever is on the pad, saved or not. Null when the pad is
+  /// blank — including the accidental-dot case [_hasRealStrokes] exists for,
+  /// which the submit guard must treat as blank.
   ///
   /// Submit calls this instead of trusting the saved bytes alone, because the
   /// Save button is a preview convenience, not a data gate: an inspector who
@@ -84,7 +113,7 @@ class SignaturePadWidgetState extends State<SignaturePadWidget> {
   /// broken form.
   Future<Uint8List?> exportIfDrawn() async {
     if (_savedBytes != null) return _savedBytes;
-    if (_controller.isEmpty) return null;
+    if (!_hasRealStrokes) return null;
     final bytes = await _exportPng();
     if (bytes == null) return null;
     // onSaved reaches into the form's setState, so it is gated on mounted
@@ -111,7 +140,8 @@ class SignaturePadWidgetState extends State<SignaturePadWidget> {
   }
 
   Future<void> _handleSave() async {
-    if (_controller.isEmpty) {
+    // Same gate as exportIfDrawn: an accidental dot is "nothing drawn".
+    if (!_hasRealStrokes) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Draw your signature first.')),
       );

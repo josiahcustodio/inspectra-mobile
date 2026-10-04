@@ -31,8 +31,11 @@ class ChecklistItemCard extends StatelessWidget {
 
         // Dynamic border coloring based on selection
         Color borderColor = AppTheme.border;
-        if (currentAnswer == 'Pass') borderColor = AppTheme.primary.withAlpha(100);
-        if (currentAnswer == 'Fail') borderColor = Colors.redAccent.withAlpha(100);
+        // AppColors.pass, not AppTheme.primary: Pass is a verdict color and
+        // must match how the same answer renders on the details screen —
+        // brand green and verdict green are distinct tokens on purpose.
+        if (currentAnswer == 'Pass') borderColor = AppColors.pass.withAlpha(100);
+        if (currentAnswer == 'Fail') borderColor = AppColors.fail.withAlpha(100);
         if (currentAnswer == 'NA') borderColor = AppTheme.textSecondary.withAlpha(100);
 
         return AnimatedContainer(
@@ -169,7 +172,7 @@ class ChecklistItemCard extends StatelessWidget {
               label: 'PASS',
               icon: Icons.check_rounded,
               isSelected: isPass,
-              selectedColor: AppTheme.primary,
+              selectedColor: AppColors.pass, // verdict green, same as FAIL's token below
               onTap: () => provider.setAnswer(item.id, 'Pass'),
             ),
           ),
