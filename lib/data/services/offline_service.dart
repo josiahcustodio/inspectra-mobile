@@ -22,11 +22,41 @@ class OfflineService {
     Hive.registerAdapter(ChecklistTemplateAdapter());
     Hive.registerAdapter(InspectionCategoryAdapter());
 
-    await Hive.openBox<Establishment>(establishmentsBoxName);
-    await Hive.openBox<ChecklistTemplate>(templatesBoxName);
-    await Hive.openBox<InspectionCategory>(categoriesBoxName);
+    await _openCacheBox<Establishment>(establishmentsBoxName);
+    await _openCacheBox<ChecklistTemplate>(templatesBoxName);
+    await _openCacheBox<InspectionCategory>(categoriesBoxName);
     await Hive.openBox<String>(inspectionsQueueBoxName);
     await Hive.openBox<String>(prefsBoxName);
+  }
+
+  // [REF: CACHE_BOX_SELF_HEAL]
+  /// Opens a Firestore-mirror cache box, recreating it from nothing if the
+  /// bytes on disk cannot be read.
+  ///
+  /// The box file outlives the binary, and the adapter is generated from
+  /// whatever the model looked like when THAT build shipped — a device
+  /// upgrading from an old APK can hold frames whose field numbers carry
+  /// different types (found in the field: a 2026-era tablet box stored an int
+  /// where field 10 is now `String? categoryId`, and the resulting cast error
+  /// escaped `openBox` and killed startup before the first frame). These
+  /// three boxes are pure mirrors refilled by [syncData], so deleting an
+  /// unreadable one loses nothing a sync cannot restore — including the D19
+  /// bridge's stranded records, which were unreadable on this path anyway.
+  ///
+  /// The inspections queue and prefs boxes are deliberately NOT routed
+  /// through this: the queue holds unsynced field work that must never be
+  /// auto-deleted, and both are `Box<String>` — no generated adapter, so
+  /// schema drift cannot corrupt them in this way.
+  static Future<void> _openCacheBox<T>(String name) async {
+    try {
+      await Hive.openBox<T>(name);
+    } catch (e) {
+      debugPrint(
+          'Cache box "$name" is unreadable (stale schema from an older build?); '
+          'recreating it empty. It will refill on the next sync. Error: $e');
+      await Hive.deleteBoxFromDisk(name);
+      await Hive.openBox<T>(name);
+    }
   }
 
   // ─── App Preferences ────────────────────────────────────────────────────────
