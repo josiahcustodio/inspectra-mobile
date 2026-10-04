@@ -124,7 +124,7 @@ class ProfileScreen extends StatelessWidget {
           children: [
             CircleAvatar(
               radius: 36,
-              backgroundColor: const Color(0xFF10B981).withOpacity(0.15),
+              backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.15),
               child: const Icon(Icons.person_rounded,
                   size: 40, color: Color(0xFF10B981)),
             ),
@@ -464,7 +464,7 @@ class _SettingsTile extends StatelessWidget {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: const Color(0xFF10B981),
+            activeThumbColor: const Color(0xFF10B981),
           ),
         ],
       ),
