@@ -132,6 +132,21 @@ class OfflineService {
         final data = Map<String, dynamic>.from(doc.data());
         data['id'] = doc.id;
 
+        // [REF: DELISTED_FILTER]
+        // The web admin marks establishments that dropped off the city
+        // masterlist with status 'delisted' rather than deleting them — the
+        // web repo's models.ts contract keeps the document for its history,
+        // but the business is no longer the city's to inspect, so it must not
+        // be offered on mobile. Skipping here, before fromJson, keeps it out
+        // of the box entirely; a copy cached before it was delisted falls out
+        // via the deleteAll below, exactly as an admin-deleted doc would.
+        //
+        // A client-side skip and not a Firestore query, deliberately: the
+        // field is new, so `where('status' == 'active')` would also drop
+        // every legacy document written before it existed — which today is
+        // all of them.
+        if (data['status'] == 'delisted') continue;
+
         // Robust category resolution
         String? catId = data['category_id']?.toString();
         if (catId == null && data['category'] != null) {

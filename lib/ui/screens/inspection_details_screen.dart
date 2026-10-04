@@ -144,6 +144,7 @@ class _InspectionDetailsScreenState extends State<InspectionDetailsScreen> {
     final demerits = _logData!['total_demerits'] as int? ?? 0;
     final inspector = _logData!['inspector_name'] as String? ?? 'Unknown';
     final remarks = _logData!['remarks'] as String?;
+    final signatureUrl = _logData!['signature_url'] as String?;
 
     return ListView(
       physics: const ClampingScrollPhysics(),
@@ -227,6 +228,60 @@ class _InspectionDetailsScreenState extends State<InspectionDetailsScreen> {
           ..._groupedResults.entries.map((entry) {
             return _buildCategorySection(entry.key, entry.value);
           }),
+
+        // [REF: SIGNATURE_DISPLAY]
+        // Rendered only when the log actually carries a signature: the field
+        // is additive (Chunk 7), so legacy logs simply have no key, and a
+        // placeholder for them would imply every old record is missing
+        // something it was never supposed to have. A queued log whose upload
+        // has not finished has no URL yet either — the signature appears here
+        // once the queue drains.
+        if (signatureUrl != null && signatureUrl.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          const Text(
+            "Inspector's Signature",
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: AppTheme.cardRadius,
+              boxShadow: AppTheme.softShadow,
+            ),
+            child: Image.network(
+              signatureUrl,
+              height: 120,
+              fit: BoxFit.contain,
+              loadingBuilder: (context, child, progress) => progress == null
+                  ? child
+                  : const SizedBox(
+                      height: 120,
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+              // Degrades to a quiet note rather than a broken-image glyph —
+              // a signature that fails to load offline is expected, not an
+              // error state worth alarming over.
+              errorBuilder: (context, error, stackTrace) => SizedBox(
+                height: 120,
+                child: Center(
+                  child: Text(
+                    'Signature could not be loaded.',
+                    style: TextStyle(
+                      color: Colors.grey.shade500,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
       ],
     );
   }

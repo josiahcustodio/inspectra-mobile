@@ -27,6 +27,13 @@ dependencies:
   uuid: ^4.5.3
   go_router: ^17.5.0
   qr_flutter: ^4.1.0
+  # Inspector sign-off (Chunk 7). `signature` was deleted 2026-09-16 as dead
+  # code; this re-introduction is deliberate — the Backend Blueprint (Rev 3,
+  # §4) replaces the wet-ink SSSR/Signature column of the paper masterlist
+  # with a PNG captured at submit. `crypto` provides the SHA-256 that pins
+  # the uploaded image to the inspection record.
+  signature: ^5.5.0
+  crypto: ^3.0.3
 
 dev_dependencies:
   flutter_test:

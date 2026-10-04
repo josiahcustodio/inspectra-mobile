@@ -1,9 +1,13 @@
 import 'package:go_router/go_router.dart';
 import 'dart:io';
 import 'dart:convert';
+import 'dart:typed_data';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../core/category_suggester.dart';
 import '../../core/rating_scale.dart';
@@ -18,6 +22,7 @@ import '../../providers/rating_provider.dart';
 import '../widgets/category_picker.dart';
 import '../widgets/checklist_item_card.dart';
 import '../widgets/establishment_banner.dart';
+import '../widgets/signature_pad.dart';
 import '../../core/theme/app_colors.dart';
 
 class InspectionFormScreen extends StatefulWidget {
@@ -52,6 +57,16 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
 
   File? _evidenceImage;
   final ImagePicker _picker = ImagePicker();
+
+  /// The saved sign-off PNG, if any. Held here as well as in the pad widget
+  /// because the body is swapped for a spinner while submitting, which
+  /// disposes the pad's State; this copy is what re-seeds it on the way back.
+  Uint8List? _signatureBytes;
+
+  /// Reaches into the pad at submit so an inspector who signed but never
+  /// tapped Save is not bounced — see SignaturePadWidgetState.exportIfDrawn.
+  final GlobalKey<SignaturePadWidgetState> _signatureKey =
+      GlobalKey<SignaturePadWidgetState>();
 
   final TextEditingController _remarksController = TextEditingController();
 
@@ -342,6 +357,25 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
       return;
     }
 
+    // [REF: SIGNATURE_SUBMIT_GUARD]
+    // Last in the ladder, after completeness: the sign-off is what makes the
+    // record official (it replaces the wet-ink SSSR column of the paper
+    // masterlist), so it is required — and requiring it does not violate D9,
+    // because capture is fully offline. Asking the pad rather than reading
+    // `_signatureBytes` alone is deliberate: the Save button is a preview
+    // convenience, and an inspector who signed without tapping it has still
+    // signed.
+    final signatureBytes =
+        _signatureBytes ?? await _signatureKey.currentState?.exportIfDrawn();
+    if (!mounted) return;
+    if (signatureBytes == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Please add your signature before submitting.')),
+      );
+      return;
+    }
+
     setState(() {
       _isSubmitting = true;
     });
@@ -374,6 +408,74 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
       );
     }
 
+    // [REF: SIGNATURE_STAGING]
+    // The log id is minted HERE instead of inside the InspectionLog
+    // constructor, because the signature's Storage path is deterministic —
+    // signatures/{estId}/{logId}.png, so retries overwrite themselves — and
+    // a deterministic path needs the id before the log object exists. The
+    // constructor still accepts it; nothing else about id handling changes.
+    final logId = const Uuid().v4();
+
+    // Written to the app documents dir, not image_picker's temp cache: this
+    // file may have to survive days of airplane mode in the queue, and the
+    // OS reclaims temp space without asking. The hash is computed from the
+    // in-memory bytes before anything touches disk or network, so whichever
+    // upload path carries the image, what lands in Firestore attests to
+    // exactly what the inspector saw on the pad.
+    String? signatureUrl;
+    String? localSignaturePath;
+    final String signatureSha256 = sha256.convert(signatureBytes).toString();
+    try {
+      final docsDir = await getApplicationDocumentsDirectory();
+      final sigDir = Directory('${docsDir.path}/signatures');
+      if (!sigDir.existsSync()) sigDir.createSync(recursive: true);
+      final sigFile = File('${sigDir.path}/$logId.png');
+      await sigFile.writeAsBytes(signatureBytes, flush: true);
+
+      // Try-now, same as the photo above: on failure the on-device path is
+      // staged instead and SyncService retries when the queue drains.
+      signatureUrl = await SyncService.uploadImage(
+        sigFile,
+        SyncService.signaturePath(widget.establishment.id, logId),
+      );
+      if (signatureUrl == null) {
+        localSignaturePath = sigFile.path;
+      } else {
+        // Uploaded on the spot — the staged copy has served its purpose, and
+        // nothing else ever cleans this directory.
+        try {
+          sigFile.deleteSync();
+        } catch (_) {}
+      }
+    } catch (e) {
+      // Disk staging failed (full storage, denied dir) — but the signed
+      // bytes are still in memory, so unlike SyncService's missing-file
+      // forgiveness there IS something a direct upload can carry. Try the
+      // network before giving anything up.
+      debugPrint('Could not stage signature, trying direct upload: $e');
+      signatureUrl = await SyncService.uploadSignatureBytes(
+        signatureBytes,
+        SyncService.signaturePath(widget.establishment.id, logId),
+      );
+      if (signatureUrl == null) {
+        // Offline AND the device cannot stage a file — the one state with
+        // no route to an eventual upload. The record does not proceed
+        // unsigned: "required to submit" would mean nothing if it waived
+        // itself exactly when the signature is hardest to reproduce later.
+        // This does not violate D9 — the inspector is blocked by their own
+        // device's storage failure, named in the message with an action to
+        // take, not by missing signal; the normal dead-zone path (stage,
+        // queue, sync later) is untouched above.
+        if (mounted) {
+          setState(() => _isSubmitting = false);
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Could not save your signature (device storage '
+                  'failed). Free up space and try again.')));
+        }
+        return;
+      }
+    }
+
     final List<Map<String, dynamic>> resultsArray = [];
     for (final entry in ratingProvider.answers.entries) {
       final itemId = entry.key;
@@ -397,6 +499,8 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
     }
 
     final log = InspectionLog(
+      // The id minted above for the signature path — see [REF: SIGNATURE_STAGING].
+      id: logId,
       establishmentId: widget.establishment.id,
       establishmentName: widget.establishment.name, // saved to Firestore so any phone can display it
       // D24 — the id is the machine key, the name is the human record of which
@@ -414,6 +518,9 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
       // Only stage the local path when the upload did not already succeed.
       localPhotoPath:
           (photoUrl == null && _evidenceImage != null) ? _evidenceImage!.path : null,
+      signatureUrl: signatureUrl,
+      signatureSha256: signatureSha256,
+      localSignaturePath: localSignaturePath,
       results: resultsArray,
     );
 
@@ -428,11 +535,25 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
     // uploads the photo and patches the URL in without duplicating anything.
     final photoStillPending = _evidenceImage != null && photoUrl == null;
 
-    setState(() {
-      _isSubmitting = false;
-    });
+    // Same shape as the photo: a staged file exists on this device and has
+    // no URL yet, so the record is not finished until the queue drains.
+    // (This is the only unsigned-in-Firestore state that can reach here —
+    // a staging failure above either uploaded directly or blocked the
+    // submit, so there is always either a URL or a staged file by now.)
+    final signatureStillPending = localSignaturePath != null;
 
-    if (success && !photoStillPending) {
+    // Guarded: a system-back pop while the submit spinner is up disposes
+    // this State mid-await, and setState after dispose throws. The queue
+    // write below must still run either way — the inspection is already
+    // scored and signed, and losing it to a navigation gesture would be far
+    // worse than a stale flag on a dead State.
+    if (mounted) {
+      setState(() {
+        _isSubmitting = false;
+      });
+    }
+
+    if (success && !photoStillPending && !signatureStillPending) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Submitted Successfully!')));
@@ -441,8 +562,8 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
       return;
     }
 
-    // Save to the offline queue. toQueueJson keeps the on-device photo path so
-    // the evidence survives until it can be uploaded.
+    // Save to the offline queue. toQueueJson keeps the on-device photo and
+    // signature paths so both survive until they can be uploaded.
     final jsonStr = jsonEncode(log.toQueueJson());
     await OfflineService.inspectionsQueueBox.put(log.id, jsonStr);
 
@@ -450,7 +571,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(success
-              ? 'Submitted. Photo will upload when you have signal.'
+              ? 'Submitted. Attachments will upload when you have signal.'
               : 'Saved offline. Will sync later.'),
         ),
       );
@@ -892,6 +1013,30 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                  const Divider(height: 32, thickness: 2),
+
+                  // [REF: SIGNATURE_CAPTURE]
+                  // Next to the photo evidence because it is the same kind of
+                  // thing — an attachment captured in the field that syncs
+                  // with the record — but unlike the photo it is required:
+                  // this is the sign-off that replaces the wet-ink
+                  // SSSR/Signature column of the paper masterlist, and an
+                  // unsigned paper form would not have been accepted either.
+                  // The guard lives in _submitForm with the others.
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: SignaturePadWidget(
+                      key: _signatureKey,
+                      title: "Inspector's Signature",
+                      // Re-seeds the pad after the submit spinner replaced the
+                      // body and disposed its State — otherwise a failed
+                      // submit would show an empty pad over a form that still
+                      // held, and would still upload, the old bytes.
+                      initialBytes: _signatureBytes,
+                      onSaved: (bytes) =>
+                          setState(() => _signatureBytes = bytes),
                     ),
                   ),
                   const SizedBox(height: 48), // Padding before bottom nav

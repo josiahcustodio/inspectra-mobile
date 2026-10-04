@@ -43,6 +43,21 @@ class InspectionLog {
   /// [photoEvidenceUrl].
   final String? localPhotoPath;
 
+  // [REF: OFFLINE_SIGNATURE_STAGING]
+  /// The inspector's sign-off, captured at submit (Chunk 7).
+  ///
+  /// [signatureUrl] and [signatureSha256] travel to Firestore strictly as a
+  /// pair — the hash exists to pin the uploaded PNG to this record, so a hash
+  /// for an image Firestore cannot see verifies nothing and [toJson] refuses
+  /// to write one. [localSignaturePath] is the same local-only staging idea
+  /// as [localPhotoPath]: written to the Hive queue by [toQueueJson] (with
+  /// the hash, so the retry can re-pair them), never to Firestore. All three
+  /// nullable because the fields are additive — logs written before Chunk 7
+  /// have none of them.
+  final String? signatureUrl;
+  final String? signatureSha256;
+  final String? localSignaturePath;
+
   final List<Map<String, dynamic>> results;
 
   InspectionLog({
@@ -58,6 +73,9 @@ class InspectionLog {
     String? inspectionDate,
     this.photoEvidenceUrl,
     this.localPhotoPath,
+    this.signatureUrl,
+    this.signatureSha256,
+    this.localSignaturePath,
     List<Map<String, dynamic>>? results,
   })  : id = (id == null || id.isEmpty) ? const Uuid().v4() : id,
         inspectionDate = inspectionDate ?? DateTime.now().toIso8601String(),
@@ -77,6 +95,9 @@ class InspectionLog {
       inspectionDate: json['inspection_date'] as String?,
       photoEvidenceUrl: json['photo_evidence_url'] as String?,
       localPhotoPath: json['local_photo_path'] as String?,
+      signatureUrl: json['signature_url'] as String?,
+      signatureSha256: json['signature_sha256'] as String?,
+      localSignaturePath: json['local_signature_path'] as String?,
       results: (json['results'] as List?)
               ?.map((e) => Map<String, dynamic>.from(e as Map))
               .toList() ??
@@ -102,18 +123,40 @@ class InspectionLog {
       'remarks': remarks,
       'inspection_date': inspectionDate,
       'photo_evidence_url': photoEvidenceUrl,
+      // Strictly as a pair, in both directions: a hash without an image
+      // Firestore can see verifies nothing, and a URL without its hash loses
+      // the tamper-evidence that justifies storing either — any consumer
+      // checking one key may assume the other. A still-staged signature
+      // keeps its hash in the queue via toQueueJson instead; every live URL
+      // acquisition computes the hash first, so withholding an unhashed URL
+      // is defensive structure, not a reachable state.
+      if (signatureUrl != null && signatureSha256 != null) ...{
+        'signature_url': signatureUrl,
+        'signature_sha256': signatureSha256,
+      },
       'results': results,
     };
   }
 
   // [REF: OFFLINE_PHOTO_STAGING]
-  /// The offline-queue representation. Identical to [toJson] plus
-  /// [localPhotoPath], so a queued inspection remembers which photo on this
-  /// device still needs uploading. Only ever written to Hive, never Firestore.
+  /// The offline-queue representation. Identical to [toJson] plus the staged
+  /// local paths, so a queued inspection remembers which files on this device
+  /// still need uploading. Only ever written to Hive, never Firestore.
   Map<String, dynamic> toQueueJson() {
     final json = toJson();
     if (localPhotoPath != null && localPhotoPath!.isNotEmpty) {
       json['local_photo_path'] = localPhotoPath;
+    }
+    if (localSignaturePath != null && localSignaturePath!.isNotEmpty) {
+      json['local_signature_path'] = localSignaturePath;
+      // The hash rides with the staged path even though toJson withheld it
+      // (no URL yet): it was computed from the exact bytes in that file, and
+      // the retry in SyncService re-pairs it with the URL it earns. Dropping
+      // it here would mean re-hashing on retry — hashing a file that could by
+      // then differ from what the inspector saw at submit.
+      if (signatureSha256 != null) {
+        json['signature_sha256'] = signatureSha256;
+      }
     }
     return json;
   }
