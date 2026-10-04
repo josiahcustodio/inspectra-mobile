@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../core/theme/app_colors.dart';
 
 // [REF: LOGIN_SCREEN]
 class LoginScreen extends StatefulWidget {
@@ -31,7 +32,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final authProvider = Provider.of<AuthProvider>(context);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppColors.background,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -49,7 +50,7 @@ class _LoginScreenState extends State<LoginScreen> {
               height: 300,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF0D9488).withValues(alpha: 0.15),
+                color: AppColors.brand.withValues(alpha: 0.15),
               ),
             ),
           ),
@@ -61,7 +62,7 @@ class _LoginScreenState extends State<LoginScreen> {
               height: 250,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                color: AppColors.brandStrong.withValues(alpha: 0.15),
               ),
             ),
           ),
@@ -89,7 +90,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   fontSize: 36,
                   fontWeight: FontWeight.w800,
                   letterSpacing: -1.2,
-                  color: Color(0xFF0D9488),
+                  color: AppColors.brand,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -102,7 +103,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   fontFamily: '.SF Pro Text',
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFF333333),
+                  color: AppColors.textPrimary,
                 ),
               ),
               const SizedBox(height: 8),
@@ -117,15 +118,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   contentPadding: const EdgeInsets.all(16),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+                    borderSide: const BorderSide(color: AppColors.border),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+                    borderSide: const BorderSide(color: AppColors.border),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFF0A2540), width: 1.5),
+                    borderSide: const BorderSide(color: AppColors.brandStrong, width: 1.5),
                   ),
                   errorBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -152,7 +153,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   fontFamily: '.SF Pro Text',
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFF333333),
+                  color: AppColors.textPrimary,
                 ),
               ),
               const SizedBox(height: 8),
@@ -166,15 +167,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   contentPadding: const EdgeInsets.all(16),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+                    borderSide: const BorderSide(color: AppColors.border),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+                    borderSide: const BorderSide(color: AppColors.border),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFF0A2540), width: 1.5),
+                    borderSide: const BorderSide(color: AppColors.brandStrong, width: 1.5),
                   ),
                   errorBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -209,7 +210,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   'Forgot Password?',
                   textAlign: TextAlign.right,
                   style: TextStyle(
-                    color: Color(0xFF0D9488),
+                    color: AppColors.brandStrong,
                     fontFamily: '.SF Pro Text',
                     fontWeight: FontWeight.w600,
                   ),
@@ -234,7 +235,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       }
                     },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0D9488),
+                  backgroundColor: AppColors.brandStrong,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
@@ -266,7 +267,7 @@ class _LoginScreenState extends State<LoginScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: Container(height: 1, color: const Color(0xFFE0E0E0))
+                    child: Container(height: 1, color: AppColors.border)
                   ),
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 16),
@@ -280,7 +281,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                   ),
-                  Expanded(child: Container(height: 1, color: const Color(0xFFE0E0E0))),
+                  Expanded(child: Container(height: 1, color: AppColors.border)),
                 ],
               ),
               
@@ -288,7 +289,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
               // Authentic Google Sign In Button
               if (authProvider.isLoading)
-                const Center(child: CircularProgressIndicator(color: Color(0xFF0A2540)))
+                const Center(child: CircularProgressIndicator(color: AppColors.brandStrong))
               else
                 OutlinedButton(
                   onPressed: () async {
@@ -303,7 +304,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     backgroundColor: Colors.white,
                     foregroundColor: Colors.black87,
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    side: const BorderSide(color: Color(0xFFE0E0E0), width: 1),
+                    side: const BorderSide(color: AppColors.border, width: 1),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -346,7 +347,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: TextStyle(
                         fontFamily: '.SF Pro Text',
                         fontSize: 14,
-                        color: Color(0xFF0D9488),
+                        color: AppColors.brandStrong,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -372,15 +373,15 @@ class _LoginScreenState extends State<LoginScreen> {
       fillColor: Colors.white,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+        borderSide: const BorderSide(color: AppColors.border),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+        borderSide: const BorderSide(color: AppColors.border),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(color: Color(0xFF0D9488), width: 1.5),
+        borderSide: const BorderSide(color: AppColors.brand, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
@@ -390,7 +391,7 @@ class _LoginScreenState extends State<LoginScreen> {
         borderRadius: BorderRadius.circular(16),
         borderSide: const BorderSide(color: Colors.redAccent, width: 1.5),
       ),
-      labelStyle: const TextStyle(color: Color(0xFF64748B), fontFamily: '.SF Pro Text'),
+      labelStyle: const TextStyle(color: AppColors.textSecondary, fontFamily: '.SF Pro Text'),
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
     );
   }
@@ -403,11 +404,11 @@ class _LoginScreenState extends State<LoginScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text('Reset Password', style: TextStyle(fontFamily: '.SF Pro Display', fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+        title: const Text('Reset Password', style: TextStyle(fontFamily: '.SF Pro Display', fontWeight: FontWeight.bold, color: AppColors.textDisplay)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Enter your email to receive a password reset link.', style: TextStyle(color: Color(0xFF64748B), fontSize: 14)),
+            const Text('Enter your email to receive a password reset link.', style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
             const SizedBox(height: 16),
             TextField(
               controller: emailController,
@@ -423,7 +424,7 @@ class _LoginScreenState extends State<LoginScreen> {
             style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             ),
-            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+            child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -438,7 +439,7 @@ class _LoginScreenState extends State<LoginScreen> {
               }
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0D9488),
+              backgroundColor: AppColors.brandStrong,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               elevation: 0,
@@ -463,7 +464,7 @@ class _LoginScreenState extends State<LoginScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text('Create Account', style: TextStyle(fontFamily: '.SF Pro Display', fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+        title: const Text('Create Account', style: TextStyle(fontFamily: '.SF Pro Display', fontWeight: FontWeight.bold, color: AppColors.textDisplay)),
         content: SingleChildScrollView(
           child: Form(
             key: formKey,
@@ -507,7 +508,7 @@ class _LoginScreenState extends State<LoginScreen> {
             style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             ),
-            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+            child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -528,7 +529,7 @@ class _LoginScreenState extends State<LoginScreen> {
               }
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0D9488),
+              backgroundColor: AppColors.brandStrong,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               elevation: 0,

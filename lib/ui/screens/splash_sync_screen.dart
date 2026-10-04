@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import '../../data/services/offline_service.dart';
+import '../../core/theme/app_colors.dart';
 
 class SplashSyncScreen extends StatefulWidget {
   const SplashSyncScreen({super.key});
@@ -54,8 +55,10 @@ class _SplashSyncScreenState extends State<SplashSyncScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor:
-          Theme.of(context).colorScheme.primary, // Sage Green primary
+      // brandStrong rather than the brand itself: every word on this screen is
+      // white on this ground, and the status line is 14pt. White on `brand` is
+      // 3.77:1 and fails AA at that size; on brandStrong it is 5.48:1.
+      backgroundColor: AppColors.brandStrong,
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(32.0),

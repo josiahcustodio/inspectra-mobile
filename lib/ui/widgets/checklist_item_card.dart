@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../data/models/checklist_template.dart';
 import '../../providers/rating_provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/app_colors.dart';
 
 class ChecklistItemCard extends StatelessWidget {
   final ChecklistTemplate item;
@@ -178,7 +179,7 @@ class ChecklistItemCard extends StatelessWidget {
               label: 'FAIL',
               icon: Icons.close_rounded,
               isSelected: isFail,
-              selectedColor: const Color(0xFFEF4444), // Vibrant Red
+              selectedColor: AppColors.fail, // Vibrant Red
               onTap: () => provider.setAnswer(item.id, 'Fail'),
             ),
           ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/rating_scale.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/services/sync_service.dart';
+import '../../core/theme/app_colors.dart';
 
 class InspectionDetailsScreen extends StatefulWidget {
   final String logId;
@@ -66,10 +67,10 @@ class _InspectionDetailsScreenState extends State<InspectionDetailsScreen> {
     switch (status.toLowerCase()) {
       case 'compliant':
       case 'pass':
-        return const Color(0xFF10B981); // Green
+        return AppColors.pass;
       case 'non-compliant':
       case 'fail':
-        return const Color(0xFFEF4444); // Red
+        return AppColors.fail;
       case 'n/a':
       default:
         return Colors.grey.shade600;

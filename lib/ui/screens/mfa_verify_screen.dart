@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/auth_provider.dart';
+import '../../core/theme/app_colors.dart';
 
 /// Sign-in-time TOTP challenge. Reached only while unauthenticated with a
 /// pending [AuthProvider.mfaResolver] (Firebase threw
@@ -51,7 +52,7 @@ class _MfaVerifyScreenState extends State<MfaVerifyScreen> {
 
     if (!authProvider.mfaChallengePending) {
       return Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
+        backgroundColor: AppColors.background,
         body: SafeArea(
           child: Center(
             child: Padding(
@@ -65,19 +66,19 @@ class _MfaVerifyScreenState extends State<MfaVerifyScreen> {
                       fontFamily: '.SF Pro Display',
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF0F172A),
+                      color: AppColors.textDisplay,
                     ),
                   ),
                   const SizedBox(height: 8),
                   const Text(
                     'Please sign in again to continue.',
-                    style: TextStyle(color: Color(0xFF64748B)),
+                    style: TextStyle(color: AppColors.textSecondary),
                   ),
                   const SizedBox(height: 24),
                   ElevatedButton(
                     onPressed: () => context.go('/login'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0D9488),
+                      backgroundColor: AppColors.brandStrong,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       elevation: 0,
@@ -93,7 +94,7 @@ class _MfaVerifyScreenState extends State<MfaVerifyScreen> {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppColors.background,
       body: Stack(
         children: [
           Positioned(
@@ -104,7 +105,7 @@ class _MfaVerifyScreenState extends State<MfaVerifyScreen> {
               height: 300,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF0D9488).withValues(alpha: 0.15),
+                color: AppColors.brand.withValues(alpha: 0.15),
               ),
             ),
           ),
@@ -116,7 +117,7 @@ class _MfaVerifyScreenState extends State<MfaVerifyScreen> {
               height: 250,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                color: AppColors.brandStrong.withValues(alpha: 0.15),
               ),
             ),
           ),
@@ -133,7 +134,7 @@ class _MfaVerifyScreenState extends State<MfaVerifyScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 48),
-                  const Icon(Icons.shield_outlined, size: 48, color: Color(0xFF0D9488)),
+                  const Icon(Icons.shield_outlined, size: 48, color: AppColors.brand),
                   const SizedBox(height: 16),
                   const Text(
                     'Two-Factor Authentication',
@@ -142,7 +143,7 @@ class _MfaVerifyScreenState extends State<MfaVerifyScreen> {
                       fontSize: 26,
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.8,
-                      color: Color(0xFF0D9488),
+                      color: AppColors.brand,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -152,7 +153,7 @@ class _MfaVerifyScreenState extends State<MfaVerifyScreen> {
                     style: TextStyle(
                       fontFamily: '.SF Pro Text',
                       fontSize: 14,
-                      color: Color(0xFF64748B),
+                      color: AppColors.textSecondary,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -170,15 +171,15 @@ class _MfaVerifyScreenState extends State<MfaVerifyScreen> {
                       contentPadding: const EdgeInsets.symmetric(vertical: 16),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+                        borderSide: const BorderSide(color: AppColors.border),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+                        borderSide: const BorderSide(color: AppColors.border),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFF0A2540), width: 1.5),
+                        borderSide: const BorderSide(color: AppColors.brandStrong, width: 1.5),
                       ),
                       errorText: _codeError,
                     ),
@@ -187,7 +188,7 @@ class _MfaVerifyScreenState extends State<MfaVerifyScreen> {
                   ElevatedButton(
                     onPressed: authProvider.isLoading ? null : () => _verify(authProvider),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0D9488),
+                      backgroundColor: AppColors.brandStrong,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -222,7 +223,7 @@ class _MfaVerifyScreenState extends State<MfaVerifyScreen> {
                         'Cancel / use a different account',
                         style: TextStyle(
                           fontFamily: '.SF Pro Text',
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSecondary,
                           fontWeight: FontWeight.w600,
                         ),
                       ),

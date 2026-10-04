@@ -7,6 +7,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../data/services/mfa_service.dart';
 import '../../providers/auth_provider.dart';
+import '../../core/theme/app_colors.dart';
 
 /// Mandatory TOTP enrollment screen. Reached only when the signed-in user
 /// has no TOTP factor enrolled yet — the router forces this and bounces
@@ -119,7 +120,7 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
     final authProvider = Provider.of<AuthProvider>(context);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppColors.background,
       body: Stack(
         children: [
           Positioned(
@@ -130,7 +131,7 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
               height: 300,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF0D9488).withValues(alpha: 0.15),
+                color: AppColors.brand.withValues(alpha: 0.15),
               ),
             ),
           ),
@@ -142,7 +143,7 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
               height: 250,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                color: AppColors.brandStrong.withValues(alpha: 0.15),
               ),
             ),
           ),
@@ -166,7 +167,7 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
                       fontSize: 26,
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.8,
-                      color: Color(0xFF0D9488),
+                      color: AppColors.brand,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -176,7 +177,7 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
                     style: TextStyle(
                       fontFamily: '.SF Pro Text',
                       fontSize: 14,
-                      color: Color(0xFF64748B),
+                      color: AppColors.textSecondary,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -192,7 +193,7 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
                         'Not you? Sign out',
                         style: TextStyle(
                           fontFamily: '.SF Pro Text',
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSecondary,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -212,7 +213,7 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
       return const Center(
         child: Padding(
           padding: EdgeInsets.symmetric(vertical: 32),
-          child: CircularProgressIndicator(color: Color(0xFF0A2540)),
+          child: CircularProgressIndicator(color: AppColors.brandStrong),
         ),
       );
     }
@@ -231,7 +232,7 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
                 ? () => Provider.of<AuthProvider>(context, listen: false).signOut()
                 : _startEnrollment,
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0D9488),
+              backgroundColor: AppColors.brandStrong,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -275,7 +276,7 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
             _showManualKey ? 'Hide manual code' : "Can't scan? Enter code manually",
             style: const TextStyle(
               fontFamily: '.SF Pro Text',
-              color: Color(0xFF0D9488),
+              color: AppColors.brandStrong,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -302,7 +303,7 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
               fontFamily: '.SF Pro Text',
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF333333),
+              color: AppColors.textPrimary,
             ),
           ),
         ),
@@ -319,15 +320,15 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
             contentPadding: const EdgeInsets.symmetric(vertical: 16),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+              borderSide: const BorderSide(color: AppColors.border),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+              borderSide: const BorderSide(color: AppColors.border),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFF0A2540), width: 1.5),
+              borderSide: const BorderSide(color: AppColors.brandStrong, width: 1.5),
             ),
             errorText: _codeError,
           ),
@@ -336,7 +337,7 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
         ElevatedButton(
           onPressed: _submitting ? null : _verify,
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF0D9488),
+            backgroundColor: AppColors.brandStrong,
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(vertical: 16),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

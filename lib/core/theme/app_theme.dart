@@ -1,26 +1,37 @@
 import 'package:flutter/material.dart';
 
+import 'app_colors.dart';
+
 // [REF: DESIGN_TOKENS]
+/// Assembles the app's [ThemeData] and re-exports the colour tokens under the
+/// names widgets already use.
+///
+/// The colours themselves are defined once in [AppColors] — these are aliases,
+/// kept so that renaming every `AppTheme.primary` call site is a separate
+/// change from introducing the token file. New code should prefer [AppColors]
+/// directly; both resolve to the same constant.
 class AppTheme {
-  static const Color primary = Color(0xFF10B981);
-  static const Color primaryDark = Color(0xFF059669);
-  static const Color secondary = Color(0xFF1A1C1E);
-  static const Color accent = Color(0xFFECFDF5);
-  static const Color background = Color(0xFFF8FAFC);
-  static const Color surface = Colors.white;
-  
-  static const Color textPrimary = Color(0xFF1A1C1E);
-  static const Color textSecondary = Color(0xFF64748B);
-  static const Color border = Color(0xFFE2E8F0);
+  /// Was `#10B981`, the Excellent-band emerald, until 2026-10-04. See the
+  /// brand note in [AppColors] for the three reasons it moved.
+  static const Color primary = AppColors.brand;
+  static const Color primaryDark = AppColors.brandStrong;
+  static const Color secondary = AppColors.textPrimary;
+  static const Color accent = AppColors.brandSurface;
+  static const Color background = AppColors.background;
+  static const Color surface = AppColors.surface;
+
+  static const Color textPrimary = AppColors.textPrimary;
+  static const Color textSecondary = AppColors.textSecondary;
+  static const Color border = AppColors.border;
 
   static List<BoxShadow> get softShadow => [
         BoxShadow(
-          color: const Color(0xFF1A1C1E).withAlpha(15),
+          color: AppColors.textPrimary.withAlpha(15),
           blurRadius: 16,
           offset: const Offset(0, 8),
         ),
         BoxShadow(
-          color: const Color(0xFF1A1C1E).withAlpha(8),
+          color: AppColors.textPrimary.withAlpha(8),
           blurRadius: 4,
           offset: const Offset(0, 2),
         ),

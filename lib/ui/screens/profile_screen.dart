@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 
 import '../../data/services/mfa_service.dart';
 import '../../providers/auth_provider.dart';
+import '../../core/theme/app_colors.dart';
 
 // [REF: PROFILE_SCREEN]
 class ProfileScreen extends StatelessWidget {
@@ -21,20 +22,20 @@ class ProfileScreen extends StatelessWidget {
           style: TextStyle(
               fontFamily: '.SF Pro Display',
               fontWeight: FontWeight.bold,
-              color: Color(0xFF0F172A)),
+              color: AppColors.textDisplay),
         ),
         content: const Text(
           'Two-factor authentication is required and currently enabled on this account.\n\n'
           'If you\'re switching to a new phone or lost access to your authenticator app, '
           'you can reset it here — you\'ll need to set up a new one immediately after.',
-          style: TextStyle(color: Color(0xFF64748B), fontSize: 14),
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
         ),
         actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         actions: [
           TextButton(
             onPressed: () => ctx.pop(),
             child: const Text('Close',
-                style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -65,17 +66,17 @@ class ProfileScreen extends StatelessWidget {
             style: TextStyle(
                 fontFamily: '.SF Pro Display',
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF0F172A))),
+                color: AppColors.textDisplay)),
         content: const Text(
           'This removes your current authenticator and immediately requires setting up a new one. Continue?',
-          style: TextStyle(color: Color(0xFF64748B), fontSize: 14),
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
         ),
         actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         actions: [
           TextButton(
             onPressed: () => ctx.pop(),
             child: const Text('Cancel',
-                style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -124,9 +125,9 @@ class ProfileScreen extends StatelessWidget {
           children: [
             CircleAvatar(
               radius: 36,
-              backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.15),
+              backgroundColor: AppColors.brand.withValues(alpha: 0.15),
               child: const Icon(Icons.person_rounded,
-                  size: 40, color: Color(0xFF10B981)),
+                  size: 40, color: AppColors.brand),
             ),
             const SizedBox(height: 16),
             Text(
@@ -134,7 +135,7 @@ class ProfileScreen extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF0F172A),
+                color: AppColors.textDisplay,
               ),
             ),
             const SizedBox(height: 4),
@@ -232,14 +233,14 @@ class ProfileScreen extends StatelessWidget {
               const Row(
                 children: [
                   Icon(Icons.help_outline_rounded,
-                      color: Color(0xFF10B981), size: 22),
+                      color: AppColors.brand, size: 22),
                   SizedBox(width: 10),
                   Text(
                     'Help & Support',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF0F172A),
+                      color: AppColors.textDisplay,
                     ),
                   ),
                 ],
@@ -394,7 +395,7 @@ class _SettingsDialogState extends State<_SettingsDialog> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       title: const Row(
         children: [
-          Icon(Icons.settings_outlined, color: Color(0xFF10B981), size: 22),
+          Icon(Icons.settings_outlined, color: AppColors.brand, size: 22),
           SizedBox(width: 10),
           Text('Settings',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -461,7 +462,7 @@ class _SettingsTile extends StatelessWidget {
                 Text(label,
                     style: const TextStyle(
                         fontWeight: FontWeight.w600, fontSize: 14,
-                        color: Color(0xFF0F172A))),
+                        color: AppColors.textDisplay)),
                 Text(subtitle,
                     style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
               ],
@@ -470,7 +471,7 @@ class _SettingsTile extends StatelessWidget {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeThumbColor: const Color(0xFF10B981),
+            activeThumbColor: AppColors.brand,
           ),
         ],
       ),
@@ -512,7 +513,7 @@ class _FaqTileState extends State<_FaqTile> {
                     style: const TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
-                      color: Color(0xFF0F172A),
+                      color: AppColors.textDisplay,
                     ),
                   ),
                 ),

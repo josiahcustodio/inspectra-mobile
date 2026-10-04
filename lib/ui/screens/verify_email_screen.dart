@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/auth_provider.dart';
+import '../../core/theme/app_colors.dart';
 
 /// Blocks access until the signed-in user verifies their email — a
 /// prerequisite for TOTP MFA enrollment. Reached only when
@@ -43,7 +44,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
     final email = authProvider.user?.email ?? 'your email';
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppColors.background,
       body: Stack(
         children: [
           Positioned(
@@ -54,7 +55,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
               height: 300,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF0D9488).withValues(alpha: 0.15),
+                color: AppColors.brand.withValues(alpha: 0.15),
               ),
             ),
           ),
@@ -66,7 +67,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
               height: 250,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                color: AppColors.brandStrong.withValues(alpha: 0.15),
               ),
             ),
           ),
@@ -84,7 +85,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                 children: [
                   const SizedBox(height: 48),
                   const Icon(Icons.mark_email_unread_outlined,
-                      size: 56, color: Color(0xFF0D9488)),
+                      size: 56, color: AppColors.brand),
                   const SizedBox(height: 16),
                   const Text(
                     'Verify Your Email',
@@ -93,7 +94,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                       fontSize: 26,
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.8,
-                      color: Color(0xFF0D9488),
+                      color: AppColors.brand,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -105,12 +106,12 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                     style: const TextStyle(
                       fontFamily: '.SF Pro Text',
                       fontSize: 14,
-                      color: Color(0xFF64748B),
+                      color: AppColors.textSecondary,
                     ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 32),
-                  const Center(child: CircularProgressIndicator(color: Color(0xFF0A2540))),
+                  const Center(child: CircularProgressIndicator(color: AppColors.brandStrong)),
                   const SizedBox(height: 32),
                   ElevatedButton(
                     onPressed: authProvider.isLoading
@@ -129,7 +130,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                             }
                           },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0D9488),
+                      backgroundColor: AppColors.brandStrong,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -145,7 +146,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                         'Not you? Sign out',
                         style: TextStyle(
                           fontFamily: '.SF Pro Text',
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSecondary,
                           fontWeight: FontWeight.w600,
                         ),
                       ),

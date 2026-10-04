@@ -18,6 +18,7 @@ import '../../providers/rating_provider.dart';
 import '../widgets/category_picker.dart';
 import '../widgets/checklist_item_card.dart';
 import '../widgets/establishment_banner.dart';
+import '../../core/theme/app_colors.dart';
 
 class InspectionFormScreen extends StatefulWidget {
   final Establishment establishment;
@@ -464,7 +465,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           decoration: BoxDecoration(
-            color: const Color(0xFFF8FAFC), // Matte off-white
+            color: AppColors.background, // Matte off-white
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withAlpha(25),
@@ -479,7 +480,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
               Stack(
                 alignment: Alignment.center,
                 children: [
-                  const Icon(Icons.bookmark_rounded, color: Color(0xFF0F172A), size: 36), // Deep Navy Ribbon
+                  const Icon(Icons.bookmark_rounded, color: AppColors.textDisplay, size: 36), // Deep Navy Ribbon
                   Padding(
                     padding: const EdgeInsets.only(bottom: 6),
                     child: Icon(Icons.star_rounded, color: Colors.amber.shade500, size: 24), // Matte Gold Star
@@ -493,7 +494,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
                   fontFamily: '.SF Pro Display',
                   fontSize: 24,
                   fontWeight: FontWeight.w900,
-                  color: Color(0xFF0F172A),
+                  color: AppColors.textDisplay,
                   letterSpacing: -0.5,
                 ),
               ),
@@ -508,7 +509,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
                         fontFamily: '.SF Pro Display',
                         fontSize: 36,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFF0F172A),
+                        color: AppColors.textDisplay,
                         height: 1.0,
                       ),
                     ),
@@ -684,7 +685,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
     final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         // Deliberately duplicates the banner's business name, because this
         // is the copy that cannot be taken away: the app bar sits outside the
@@ -792,7 +793,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
                           style: const TextStyle(
                             fontFamily: '.SF Pro Text',
                             fontSize: 15,
-                            color: Color(0xFF0F172A),
+                            color: AppColors.textDisplay,
                           ),
                           decoration: InputDecoration(
                             hintText: 'Add any final observations...',
@@ -801,15 +802,15 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
                               fontFamily: '.SF Pro Text',
                             ),
                             filled: true,
-                            fillColor: const Color(0xFFF8FAFC),
+                            fillColor: AppColors.background,
                             contentPadding: const EdgeInsets.all(16),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(16),
-                              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                              borderSide: const BorderSide(color: AppColors.border),
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(16),
-                              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                              borderSide: const BorderSide(color: AppColors.border),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(16),
@@ -843,10 +844,10 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
                             width: double.infinity,
                             height: 160,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
+                              color: AppColors.background,
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: const Color(0xFFCBD5E1),
+                                color: AppColors.borderStrong,
                                 width: 2,
                                 // Note: For dashed lines, we're using a solid subtle border here
                                 // to avoid extra dependencies, but keeping it light and soft.
@@ -882,7 +883,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
                                         'Tap to capture evidence',
                                         style: TextStyle(
                                           fontFamily: '.SF Pro Text',
-                                          color: Color(0xFF64748B),
+                                          color: AppColors.textSecondary,
                                           fontWeight: FontWeight.w500,
                                         ),
                                       ),
@@ -915,7 +916,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
         child: ElevatedButton(
           onPressed: _isSubmitting ? null : _submitForm,
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF0F172A), // Deep Navy / Charcoal
+            backgroundColor: AppColors.textDisplay, // Deep Navy / Charcoal
             foregroundColor: Colors.white,
             minimumSize: const Size(double.infinity, 60),
             shape: RoundedRectangleBorder(
