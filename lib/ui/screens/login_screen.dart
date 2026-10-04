@@ -14,7 +14,6 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // globalkey
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -31,11 +30,9 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
 
-    // scaffold
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       extendBodyBehindAppBar: true,
-      // appbar
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -78,10 +75,8 @@ class _LoginScreenState extends State<LoginScreen> {
           SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24.0),
-          // form
           child: Form(
             key: _formKey,
-            // column
             child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -111,7 +106,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              // textformfield
               TextFormField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
@@ -162,7 +156,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              // textformfield
               TextFormField(
                 controller: _passwordController,
                 obscureText: _obscurePassword,
@@ -210,7 +203,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 },
               ),
               const SizedBox(height: 16),
-              // gesturedetector
               GestureDetector(
                 onTap: () => _showForgotPasswordDialog(context),
                 child: const Text(
@@ -225,7 +217,6 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 24),
 
-              // elevatedbutton
               ElevatedButton(
                 onPressed: authProvider.isLoading
                   ? null
@@ -255,7 +246,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ? const SizedBox(
                         height: 4,
                         width: 100,
-                        // linearprogressindicator
                         child: LinearProgressIndicator(
                           color: Colors.white,
                           backgroundColor: Colors.white24,
@@ -273,11 +263,9 @@ class _LoginScreenState extends State<LoginScreen> {
               
               const SizedBox(height: 16),
               
-              // row
               Row(
                 children: [
                   Expanded(
-                    // container
                     child: Container(height: 1, color: const Color(0xFFE0E0E0))
                   ),
                   const Padding(
@@ -348,7 +336,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 
               const SizedBox(height: 16),
               
-              // inkwell
               Center(
                 child: InkWell(
                   onTap: () => _showSignUpDialog(context),

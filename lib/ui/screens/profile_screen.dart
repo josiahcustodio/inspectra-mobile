@@ -201,10 +201,16 @@ class ProfileScreen extends StatelessWidget {
         'a':
             'The score starts at 100. Each "Fail" answer deducts demerit points based on the weight of that checklist item. The final percentage determines the rating: 90–100 Excellent, 70–89 Very Satisfactory, 0–69 Satisfactory.',
       },
+      // Answered "Yes ... tap the pencil icon" until 2026-10-04,
+      // describing a screen this app has not had since Chunk 1. There is
+      // no edit route at all - see the comment on the establishment routes
+      // in app_router.dart - and tapping an establishment starts an
+      // inspection. The web admin owns this data, so the only useful
+      // answer is where to go instead.
       {
         'q': 'Can I edit an establishment\'s details?',
         'a':
-            'Yes. Go to the Establishments tab, tap the establishment, then tap the pencil icon in the top-right corner to edit its details.',
+            'No - establishment records are managed on the web admin dashboard, not in this app. Tapping an establishment here starts an inspection. If a name, owner or address is wrong, ask the City Health Office admin to correct it on the dashboard; the correction reaches your phone on the next sync.',
       },
       {
         'q': 'Who do I contact for technical issues?',

@@ -26,7 +26,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget build(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
 
-    // scaffold
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -129,7 +128,6 @@ class _HistoryCard extends StatelessWidget {
       ),
       child: Material(
         color: Colors.transparent,
-        // inkwell
         child: InkWell(
           borderRadius: AppTheme.cardRadius,
           onTap: () {
@@ -318,7 +316,6 @@ class _ErrorState extends StatelessWidget {
               style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
             ),
             const SizedBox(height: 20),
-            // elevatedbutton
             ElevatedButton.icon(
               onPressed: onRetry,
               style: ElevatedButton.styleFrom(backgroundColor: primary),
