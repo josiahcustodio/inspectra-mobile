@@ -134,6 +134,75 @@ describe("establishments (role-gated collection)", () => {
   });
 });
 
+describe("permit history sub-collection (mirrors establishments)", () => {
+  it("lets an officer read and write a permit doc under an establishment", async () => {
+    await seedProfile("officer1", "officer");
+    const db = testEnv.authenticatedContext("officer1").firestore();
+    const permitRef = db
+      .collection("establishments").doc("e1")
+      .collection("permits").doc("F-261174");
+    await assertSucceeds(permitRef.set({ permit_no: "F-261174" }));
+    await assertSucceeds(permitRef.get());
+  });
+
+  it("denies an officer deleting a permit doc (admin-only)", async () => {
+    await seedProfile("officer1", "officer");
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("establishments").doc("e1")
+        .collection("permits").doc("F-261174").set({ permit_no: "F-261174" });
+    });
+    const db = testEnv.authenticatedContext("officer1").firestore();
+    await assertFails(
+      db.collection("establishments").doc("e1")
+        .collection("permits").doc("F-261174").delete()
+    );
+  });
+});
+
+describe("masterlist import machinery (admin-only)", () => {
+  it("lets an admin create and read an upload batch", async () => {
+    await seedProfile("adminUser", "admin");
+    const db = testEnv.authenticatedContext("adminUser").firestore();
+    await assertSucceeds(
+      db.collection("upload_batches").doc("b1").set({ status: "running" })
+    );
+    await assertSucceeds(db.collection("upload_batches").doc("b1").get());
+  });
+
+  it("denies an officer reading or writing upload batches", async () => {
+    await seedProfile("officer1", "officer");
+    const db = testEnv.authenticatedContext("officer1").firestore();
+    await assertFails(
+      db.collection("upload_batches").doc("b1").set({ status: "running" })
+    );
+    await assertFails(db.collection("upload_batches").doc("b1").get());
+  });
+
+  it("denies even an admin deleting an upload batch (audit record)", async () => {
+    await seedProfile("adminUser", "admin");
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("upload_batches").doc("b1").set({ status: "done" });
+    });
+    const db = testEnv.authenticatedContext("adminUser").firestore();
+    await assertFails(db.collection("upload_batches").doc("b1").delete());
+  });
+
+  it("lets an admin manage the review queue but denies officers", async () => {
+    await seedProfile("adminUser", "admin");
+    await seedProfile("officer1", "officer");
+    const adminDb = testEnv.authenticatedContext("adminUser").firestore();
+    const officerDb = testEnv.authenticatedContext("officer1").firestore();
+    await assertSucceeds(
+      adminDb.collection("review_queue").doc("r1").set({ status: "pending" })
+    );
+    await assertFails(officerDb.collection("review_queue").doc("r1").get());
+    await assertFails(
+      officerDb.collection("review_queue").doc("r2").set({ status: "pending" })
+    );
+  });
+});
+
 describe("reference data (admin-write-only)", () => {
   it("lets an officer read categories but not write them", async () => {
     await seedProfile("officer1", "officer");

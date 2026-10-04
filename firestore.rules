@@ -70,6 +70,19 @@ service cloud.firestore {
       allow read: if isAuthorized();
       allow create, update: if isAuthorized();
       allow delete: if isAdmin();
+
+      // Permit-year history, written by the web admin's masterlist importer
+      // ([REF: MASTERLIST_IMPORT_WRITES] in inspectra-web): one document per
+      // permit number, carrying the parsed Excel row plus the raw original
+      // cells as the audit trail. Writes mirror the parent establishment
+      // (same D17 reasoning — the importer page is admin-routed, but the
+      // parent's maintainers are isAuthorized, and narrowing only this
+      // sub-collection would make an establishment edit flow half-work).
+      match /permits/{permitNo} {
+        allow read: if isAuthorized();
+        allow create, update: if isAuthorized();
+        allow delete: if isAdmin();
+      }
     }
 
     // 3. Inspection Logs
@@ -110,6 +123,24 @@ service cloud.firestore {
     match /inspectors/{inspectorId} {
       allow read: if isAuthorized();
       allow write: if isAdmin();
+    }
+
+    // 5. Masterlist import machinery
+    //
+    // Admin-only, unlike establishments above: the Import page is mounted
+    // only under the admin branch of inspectra-web's routes.tsx, so there is
+    // no officer UI that could hit these — the D17 concern doesn't apply.
+    // upload_batches is the audit record of each Excel import; review_queue
+    // holds fuzzy near-matches awaiting a human merge/create decision.
+    match /upload_batches/{batchId} {
+      allow read, create, update: if isAdmin();
+      // No delete: a batch document is the only record of what an import
+      // did to the masterlist.
+      allow delete: if false;
+    }
+    match /review_queue/{itemId} {
+      allow read, create, update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     // Default deny
