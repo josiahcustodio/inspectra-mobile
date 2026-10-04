@@ -6,13 +6,11 @@ import '../data/services/mfa_service.dart';
 class AuthProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _errorMessage;
-  String? _role;
   MultiFactorResolver? _mfaResolver;
   bool? _hasTotpEnrolled; // null = unknown/loading, false = needs enrollment
 
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
-  String? get role => _role;
 
   User? get user => AuthService.currentUser;
   bool get isAuthenticated => user != null;
@@ -39,10 +37,15 @@ class AuthProvider extends ChangeNotifier {
       debugPrint('Firebase Auth State Changed: ${firebaseUser?.uid ?? "signed out"}');
       _mfaResolver = null;
       if (firebaseUser != null) {
-        _role = await AuthService.ensureProfile(firebaseUser);
+        // Return value deliberately discarded. The role it resolves is not
+        // read anywhere in this app — every authorisation decision on mobile
+        // is made by firestore.rules, not by the client. The call itself is
+        // load-bearing and must stay: it CREATES the profiles/{uid} document
+        // those rules key off, so dropping it would lock a new inspector out
+        // of their own data on first sign-in.
+        await AuthService.ensureProfile(firebaseUser);
         _hasTotpEnrolled = await MfaService.hasTotpEnrolled(firebaseUser);
       } else {
-        _role = null;
         _hasTotpEnrolled = null;
       }
       notifyListeners();

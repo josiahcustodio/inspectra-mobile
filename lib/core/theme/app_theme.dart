@@ -35,7 +35,6 @@ class AppTheme {
 
   static final BorderRadius cardRadius = BorderRadius.circular(16);
   static final BorderRadius buttonRadius = BorderRadius.circular(12);
-  static final BorderRadius smallRadius = BorderRadius.circular(8);
 
   static ThemeData get lightTheme {
     return ThemeData(

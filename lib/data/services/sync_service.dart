@@ -34,18 +34,6 @@ class SyncService {
     }
   }
 
-  /// Uploads raw [bytes] to Firebase Storage at [path] and returns its public URL.
-  static Future<String?> uploadBytes(Uint8List bytes, String path) async {
-    try {
-      final ref = _storage.ref().child(path);
-      await ref.putData(bytes);
-      return await ref.getDownloadURL();
-    } catch (e) {
-      debugPrint('Upload bytes failed: $e');
-      return null;
-    }
-  }
-
   // [REF: OFFLINE_PHOTO_RETRY]
   /// Uploads an evidence photo that was captured offline and staged on disk.
   ///
