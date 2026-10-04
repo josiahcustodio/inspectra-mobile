@@ -31,9 +31,11 @@ ios/Flutter/ephemeral/
 ios/Runner/GoogleService-Info.plist
 
 # Environment / config
+# Nothing reads a .env file: flutter_dotenv is not a dependency and Firebase
+# config lives in lib/core/config/firebase_options.dart. Ignored anyway so a
+# stray local one can never be committed.
 .env
 .env.*
-!.env.example
 
 # Temporary / OS files
 .DS_Store
@@ -44,10 +46,14 @@ desktop.ini
 .idea/
 .vscode/
 
-# Device debug dumps
+# Device debug dumps and captured tool output
 crash_log.txt
 device_full.log
 logcat*.txt
+analyze*.json
+analyze*.txt
+out.json
+error.txt
 
 # Unrelated local tooling
 .agent/
