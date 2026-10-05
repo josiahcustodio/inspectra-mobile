@@ -186,20 +186,22 @@ class _NewInspectionModalState extends State<NewInspectionModal> {
                             color: AppTheme.textPrimary,
                           ),
                         ),
-                        // Owner name is what an inspector uses to tell two
-                        // similarly named businesses apart. The fallback is
-                        // insurance, not an observed case: no live record has
-                        // a blank owner today, but the web admin's form makes
-                        // the field optional (it stores null for an empty
-                        // one), so an empty subtitle is reachable.
+                        // The full address (street + barangay), per the user's
+                        // 2026-10-05 call: with thousands of imported
+                        // masterlist rows, near-identical business names recur
+                        // across barangays, and WHERE a result is distinguishes
+                        // them faster than who owns it. Owner name is the
+                        // fallback for records with no usable address.
                         subtitle: Text(
-                          est.ownerName.isNotEmpty ? est.ownerName : est.formattedAddress,
+                          est.fullAddress.toUpperCase() != 'N/A'
+                              ? est.fullAddress
+                              : est.ownerName,
                           style: const TextStyle(
                             fontFamily: '.SF Pro Text',
                             fontSize: 12,
                             color: AppTheme.textSecondary,
                           ),
-                          maxLines: 1,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
                         onTap: () => _onSuggestionTap(est),

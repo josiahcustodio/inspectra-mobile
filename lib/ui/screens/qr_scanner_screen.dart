@@ -238,14 +238,15 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
                             color: Colors.transparent,
                             child: ListTile(
                               title: Text(est.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                              // D1 — owner name, not the id or the category
-                              // badge. Matches the sibling picker in
+                              // D1 — never the id or the category badge.
+                              // Full address first, owner as fallback,
+                              // matching the sibling picker in
                               // new_inspection_modal so the two agree.
                               subtitle: Text(
-                                est.ownerName.isNotEmpty
-                                    ? est.ownerName
-                                    : est.formattedAddress,
-                                maxLines: 1,
+                                est.fullAddress.toUpperCase() != 'N/A'
+                                    ? est.fullAddress
+                                    : est.ownerName,
+                                maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
                               onTap: () => _onSuggestionTap(est),

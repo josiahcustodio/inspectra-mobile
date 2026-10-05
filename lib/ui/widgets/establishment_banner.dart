@@ -28,9 +28,11 @@ enum BannerDensity {
 // [REF: ESTABLISHMENT_BANNER]
 /// Pinned identity strip for the live inspection form (D16 — that screen only).
 ///
-/// Business name, owner, address, and nothing else: barangay, the category
-/// badge, the sanitary permit and control numbers and the raw document id are
-/// all deliberately absent (D1).
+/// Business name, owner, full address, and nothing else: the category badge,
+/// the sanitary permit and control numbers and the raw document id are all
+/// deliberately absent (D1). The address row uses [Establishment.fullAddress]
+/// (street + barangay, 2026-10-05 user call) — the barangay is part of where
+/// the place is, not a separate hidden field here.
 ///
 /// Nothing here is a fixed height, and that is the point. The banner shares the
 /// top of the screen with the live score header, which measures about 96pt on
@@ -112,7 +114,7 @@ class EstablishmentBanner extends StatelessWidget {
 
     final name = establishment.name.trim();
     final owner = establishment.ownerName.trim();
-    final address = establishment.formattedAddress.trim();
+    final address = establishment.fullAddress.trim();
 
     // `Establishment.fromJson` substitutes the literal string 'N/A' for a
     // missing address, which is worth a line of a 320pt-wide screen only if it

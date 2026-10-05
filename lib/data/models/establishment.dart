@@ -88,6 +88,29 @@ class Establishment extends HiveObject {
     return address;
   }
 
+  // [REF: ESTABLISHMENT_FULL_ADDRESS]
+  /// The address as an inspector would say it: street, then barangay.
+  ///
+  /// Masterlist-imported records split the two — the Excel's merged "Business
+  /// Address" header puts the street in `address` and the barangay in its own
+  /// unnamed column — so rendering `address` alone shows half a location.
+  /// The barangay is skipped when it is blank or when the street string
+  /// already names it (older hand-entered records often repeat it), so
+  /// nothing renders twice.
+  String get fullAddress {
+    final street = formattedAddress.trim();
+    final brgy = barangay.trim();
+
+    final hasStreet = street.isNotEmpty && street.toUpperCase() != 'N/A';
+    final hasBrgy = brgy.isNotEmpty &&
+        !(hasStreet && street.toLowerCase().contains(brgy.toLowerCase()));
+
+    if (hasStreet && hasBrgy) return '$street, $brgy';
+    if (hasStreet) return street;
+    if (hasBrgy) return brgy;
+    return street; // whatever fromJson left there, typically 'N/A'
+  }
+
   factory Establishment.fromJson(Map<String, dynamic> json) {
     dynamic addressData = json['address'];
     String addressStr = 'N/A';

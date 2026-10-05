@@ -27,7 +27,7 @@ class _EstablishmentsScreenState extends State<EstablishmentsScreen> {
       establishments = establishments.where((e) =>
         e.name.toLowerCase().contains(query) ||
         e.ownerName.toLowerCase().contains(query) ||
-        e.formattedAddress.toLowerCase().contains(query)
+        e.fullAddress.toLowerCase().contains(query)
       ).toList();
     }
 
@@ -147,26 +147,31 @@ class _EstablishmentsScreenState extends State<EstablishmentsScreen> {
                                           fontSize: 15,
                                         ),
                                       ),
+                                      // Full address directly under the name
+                                      // (user's 2026-10-05 call): among
+                                      // thousands of imported rows, location
+                                      // is what tells near-identical names
+                                      // apart, so it outranks the owner line.
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        e.fullAddress,
+                                        style: TextStyle(
+                                            color: Colors.grey.shade600,
+                                            fontSize: 12),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                       if (e.ownerName.isNotEmpty) ...[
                                         const SizedBox(height: 2),
                                         Text(
                                           e.ownerName,
                                           style: TextStyle(
-                                              color: Colors.grey.shade600,
+                                              color: Colors.grey.shade500,
                                               fontSize: 12),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                       ],
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        e.formattedAddress,
-                                        style: TextStyle(
-                                            color: Colors.grey.shade500,
-                                            fontSize: 12),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
                                     ],
                                   ),
                                 ),
