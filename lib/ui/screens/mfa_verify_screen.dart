@@ -7,10 +7,12 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../core/theme/app_colors.dart';
 
-/// Sign-in-time TOTP challenge. Reached only while unauthenticated with a
-/// pending [AuthProvider.mfaResolver] (Firebase threw
-/// FirebaseAuthMultiFactorException during sign-in because the account
-/// already has a TOTP factor enrolled).
+/// Sign-in-time TOTP challenge. Reached when a session exists at AAL1 but
+/// the account has a verified TOTP factor ([AuthProvider.mfaChallengePending])
+/// — the code entered here upgrades that same session to AAL2. Until it
+/// does, the restrictive RLS policies refuse every table and storage read,
+/// so the router pins the user to this screen; there is no data to show
+/// anywhere else anyway.
 class MfaVerifyScreen extends StatefulWidget {
   const MfaVerifyScreen({super.key});
 

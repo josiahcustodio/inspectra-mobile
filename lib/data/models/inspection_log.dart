@@ -37,7 +37,7 @@ class InspectionLog {
   /// On-device path of an evidence photo that has not been uploaded yet.
   ///
   /// Local-only staging: it is written into the Hive offline queue by
-  /// [toQueueJson] but NEVER into Firestore by [toJson], since a file path on
+  /// [toQueueJson] but NEVER into the database by [toJson], since a file path on
   /// one inspector's phone is meaningless to anyone else. SyncService uploads
   /// the file from this path on the next successful sync and fills in
   /// [photoEvidenceUrl].
@@ -46,12 +46,12 @@ class InspectionLog {
   // [REF: OFFLINE_SIGNATURE_STAGING]
   /// The inspector's sign-off, captured at submit (Chunk 7).
   ///
-  /// [signatureUrl] and [signatureSha256] travel to Firestore strictly as a
+  /// [signatureUrl] and [signatureSha256] travel to the database strictly as a
   /// pair — the hash exists to pin the uploaded PNG to this record, so a hash
-  /// for an image Firestore cannot see verifies nothing and [toJson] refuses
+  /// for an image the server cannot see verifies nothing and [toJson] refuses
   /// to write one. [localSignaturePath] is the same local-only staging idea
   /// as [localPhotoPath]: written to the Hive queue by [toQueueJson] (with
-  /// the hash, so the retry can re-pair them), never to Firestore. All three
+  /// the hash, so the retry can re-pair them), never to the database. All three
   /// nullable because the fields are additive — logs written before Chunk 7
   /// have none of them.
   final String? signatureUrl;
@@ -149,7 +149,7 @@ class InspectionLog {
       'inspection_date': _normalizeTimestamp(inspectionDate),
       'photo_evidence_url': photoEvidenceUrl,
       // Strictly as a pair, in both directions: a hash without an image
-      // Firestore can see verifies nothing, and a URL without its hash loses
+      // the server can see verifies nothing, and a URL without its hash loses
       // the tamper-evidence that justifies storing either — any consumer
       // checking one key may assume the other. A still-staged signature
       // keeps its hash in the queue via toQueueJson instead; every live URL
@@ -166,7 +166,7 @@ class InspectionLog {
   // [REF: OFFLINE_PHOTO_STAGING]
   /// The offline-queue representation. Identical to [toJson] plus the staged
   /// local paths, so a queued inspection remembers which files on this device
-  /// still need uploading. Only ever written to Hive, never Firestore.
+  /// still need uploading. Only ever written to Hive, never the database.
   Map<String, dynamic> toQueueJson() {
     final json = toJson();
     if (localPhotoPath != null && localPhotoPath!.isNotEmpty) {

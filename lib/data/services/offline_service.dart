@@ -30,7 +30,7 @@ class OfflineService {
   }
 
   // [REF: CACHE_BOX_SELF_HEAL]
-  /// Opens a Firestore-mirror cache box, recreating it from nothing if the
+  /// Opens a server-mirror cache box, recreating it from nothing if the
   /// bytes on disk cannot be read.
   ///
   /// The box file outlives the binary, and the adapter is generated from
@@ -108,18 +108,6 @@ class OfflineService {
       // establishment pass shares the discipline but not the shape — it
       // deleteAll's selected keys rather than clearing, to protect the D19
       // bridge.)
-      //
-      // Built from the snapshot ALONE — deliberately above the fallback
-      // injection that follows. Those three names are stale fabrications now:
-      // Chunk 2.5 proved `'2'` was never Water (it held the SUPERMARKETS
-      // checklist and is now named that) and `'3'` was never Institutional,
-      // and no category has ever been called "Food Establishment". In the
-      // throwaway lookup map the worst they can do is mislabel a denormalized
-      // display string. Persisted, they would put a row in the picker for a
-      // category that does not exist, which resolves to zero templates and
-      // reads to the inspector as a missing checklist rather than as a stale
-      // fallback. Fixing the map itself is out of scope here — it still
-      // affects nothing the picker reads.
       final serverCategories = <InspectionCategory>[];
       for (final row in categoryRows) {
         final data = Map<String, dynamic>.from(row);
@@ -127,22 +115,21 @@ class OfflineService {
         serverCategories.add(InspectionCategory.fromJson(data));
       }
 
-      // An EMPTY result is not propagated, and this is the one box where that
-      // matters enough to diverge from the template pass. A `get()` served
-      // from an evicted offline cache resolves to an empty snapshot rather
-      // than throwing, so the parse above succeeds and a clear() would wipe a
-      // good picker on a launch with no signal — leaving the inspector with no
-      // category to choose and no category to blame. Nothing is lost by
-      // keeping the cache instead: a `categories` collection that is genuinely
-      // empty makes every checklist unreachable anyway, so there is no reading
-      // of an empty snapshot that the old data serves worse.
+      // CONTRACT: an EMPTY result is not propagated. The Firestore-era
+      // rationale (an offline get() resolving to an empty snapshot instead
+      // of throwing) no longer applies — a Supabase select with no network
+      // THROWS, and the outer catch keeps the cache. What this guard still
+      // covers is the server-side empty: a categories table that is
+      // genuinely empty (mid-reseed, a bad migration, an over-eager RLS
+      // change) must not wipe a working picker on the next launch. Nothing
+      // is lost by keeping the cache: an empty categories table makes every
+      // checklist unreachable anyway, so there is no state the old data
+      // serves worse.
       //
-      // The establishment and template passes below still DO clear on an empty
-      // snapshot. That asymmetry is deliberate but not a judgement that they
-      // are safe: it is pre-existing behaviour outside this chunk's scope, and
-      // worth closing the same way. Its worst case is a filled categories box
-      // over an emptied template box, which shows eleven rows every one of
-      // which reports no checklist items.
+      // The establishment and template passes below still DO clear on an
+      // empty result. That asymmetry is pre-existing and worth closing the
+      // same way someday; its worst case is a filled categories box over an
+      // emptied template box, which shows rows that all report no checklist.
       final catBox = Hive.box<InspectionCategory>(categoriesBoxName);
       if (serverCategories.isNotEmpty) {
         await catBox.clear();
@@ -153,10 +140,6 @@ class OfflineService {
           'category/categories rather than emptying the picker',
         );
       }
-
-      // (The old defaultCategories fallback block is gone: it existed to
-      // paper over the LAST Supabase→Firestore migration, and all three of
-      // its hardcoded names were documented stale fabrications.)
 
       // ── 2. Sync establishments ────────────────────────────────────────────
       final establishmentRows = await _fetchAllRows('establishments');
@@ -189,7 +172,7 @@ class OfflineService {
         // instead. `null` must stay allowed: legacy documents predate the
         // field entirely.
         //
-        // A client-side skip and not a Firestore query, deliberately: a
+        // A client-side skip and not a server-side filter, deliberately: a
         // `where('status' == 'active')` query would also drop every legacy
         // document written before the field existed — which today is most of
         // them.
@@ -226,8 +209,13 @@ class OfflineService {
 
       // [REF: ESTABLISHMENT_UPGRADE_BRIDGE]
       // TEMPORARY — delete in Chunk 6, one release after this ships (D19).
+      // CONTRACT NOTICE (2026-10-07, Supabase cleanup pass): deliberately
+      // KEPT through the backend migration — devices upgrading straight
+      // from an old Firebase-era APK carry their old Hive boxes through the
+      // cutover, which is exactly the window this protects. Revisit after
+      // Firebase decommission plus one APK cycle.
       //
-      // Mobile no longer creates establishments (D2), so Firestore is the
+      // Mobile no longer creates establishments (D2), so the server is the
       // complete set and a straight replace would be safe from here on. But
       // the Hive box outlives the binary: a device upgrading from a build that
       // still had the add screen can hold an establishment the inspector
@@ -235,7 +223,7 @@ class OfflineService {
       // runs unconditionally at launch, so clearing without this would destroy
       // the only copy of it, silently.
       //
-      // Deliberately NOT pushed to Firestore — a mobile write to
+      // Deliberately NOT pushed to the server — a mobile write to
       // `establishments` is exactly what D2 removes. Such a record survives
       // local-only, to be recovered by hand from a support session.
       //

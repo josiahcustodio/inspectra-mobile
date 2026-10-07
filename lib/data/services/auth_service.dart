@@ -174,6 +174,18 @@ class AuthService {
   // server-side the moment the auth user is born and no client write is
   // needed or allowed to be load-bearing.
 
+  /// Connectivity failures reach us as AuthExceptions with NO stable code
+  /// (supabase's retryable-fetch errors carry only prose), so a substring
+  /// heuristic is the best available signal. One list, shared with
+  /// MfaService, so the two sides can never drift apart again — this is the
+  /// union of what each matched separately before the consolidation.
+  static bool looksLikeNetworkError(String message) {
+    final m = message.toLowerCase();
+    return m.contains('socket') ||
+        m.contains('network') ||
+        m.contains('failed host lookup');
+  }
+
   /// Maps AuthException error codes to clean, user-facing messages.
   // [REF: AUTH_ERROR_MESSAGES]
   static Exception _friendlyAuthError(AuthException e) {
@@ -199,11 +211,7 @@ class AuthService {
       case 'provider_disabled':
         return Exception('This sign-in method is not enabled.');
       default:
-        // Network failures surface as a generic AuthRetryableFetchException
-        // with no code — give the connectivity hint when that happens.
-        if (e.message.toLowerCase().contains('socket') ||
-            e.message.toLowerCase().contains('network') ||
-            e.message.toLowerCase().contains('failed host lookup')) {
+        if (looksLikeNetworkError(e.message)) {
           return Exception('No internet connection. Please check your network.');
         }
         return Exception('Authentication failed. Please try again.');

@@ -34,14 +34,15 @@ class _InspectionDetailsScreenState extends State<InspectionDetailsScreen> {
   Future<void> _fetchDetails() async {
     try {
       final data = await SyncService.fetchInspectionDetails(widget.logId);
-      final results = data['inspection_results'] as List<dynamic>? ?? [];
+      // Per-item answers live in the `results` jsonb array on the log row —
+      // the same key both clients write.
+      final results = data['results'] as List<dynamic>? ?? [];
 
-      // Group by category name (which is now saved as 'sub_category' in Firestore results)
+      // Group by sub_category: every result row denormalizes it at submit
+      // time (see the results-array builder in inspection_form_screen).
       final Map<String, List<Map<String, dynamic>>> grouped = {};
       for (var result in results) {
-        final resMap = result as Map<String, dynamic>;
-        
-        // In the new Firestore schema, we save 'sub_category' directly on the result doc
+        final resMap = Map<String, dynamic>.from(result as Map);
         final catName = resMap['sub_category'] as String? ?? 'General';
 
         if (!grouped.containsKey(catName)) {
@@ -335,7 +336,8 @@ class _InspectionDetailsScreenState extends State<InspectionDetailsScreen> {
           ),
         ),
         ...items.map((item) {
-          // Read from the flat Firestore document structure instead of Supabase joined structure
+          // Each result row is self-describing (item_name/answer/note are
+          // denormalized at submit) — no join back to checklist_templates.
           final question = item['item_name'] as String? ?? 'Unknown Question';
           final status = item['answer'] as String? ?? 'N/A';
           final remarks = item['note'] as String?;

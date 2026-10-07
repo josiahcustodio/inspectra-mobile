@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'auth_service.dart';
+
 /// One in-progress TOTP enrollment: the factor Supabase minted plus what the
 /// user needs to register it — the otpauth:// URI for the QR code and the
 /// base32 secret for manual entry. Replaces Firebase's TotpSecret.
@@ -176,8 +178,7 @@ class MfaService {
         if (e.message.toLowerCase().contains('invalid totp code')) {
           return Exception('Incorrect code. Please try again.');
         }
-        if (e.message.toLowerCase().contains('network') ||
-            e.message.toLowerCase().contains('socket')) {
+        if (AuthService.looksLikeNetworkError(e.message)) {
           return Exception('No internet connection. Please check your network.');
         }
         return Exception('Something went wrong. Please try again.');

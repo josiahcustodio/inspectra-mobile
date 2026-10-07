@@ -253,7 +253,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
   ///
   /// A modern phone camera produces a 4–12 MB JPEG. Inspectors work on mobile
   /// data in the field, and every one of those megabytes is paid for twice —
-  /// once on their connection, once in Firebase Storage egress. 1600px at 70%
+  /// once on their connection, once in Storage egress. 1600px at 70%
   /// quality is still far more detail than a sanitary deficiency photo needs
   /// and typically lands around 200–400 KB, a 10–20x reduction.
   ///
@@ -434,7 +434,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
     // file may have to survive days of airplane mode in the queue, and the
     // OS reclaims temp space without asking. The hash is computed from the
     // in-memory bytes before anything touches disk or network, so whichever
-    // upload path carries the image, what lands in Firestore attests to
+    // upload path carries the image, what lands in the database attests to
     // exactly what the inspector saw on the pad.
     String? signatureUrl;
     String? localSignaturePath;
@@ -517,7 +517,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
       // The id minted above for the signature path — see [REF: SIGNATURE_STAGING].
       id: logId,
       establishmentId: widget.establishment.id,
-      establishmentName: widget.establishment.name, // saved to Firestore so any phone can display it
+      establishmentName: widget.establishment.name, // saved on the log row so any phone can display it
       // D24 — the id is the machine key, the name is the human record of which
       // checklist was administered. Neither is read back off the
       // establishment; both come from what the inspector picked.
@@ -544,15 +544,15 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
     // Results are embedded in log.toJson() directly.
 
     // A photo that was captured but not uploaded still counts as unfinished
-    // work, even when the Firestore write itself succeeded (Storage can fail
-    // while Firestore is reachable). Re-queueing is safe and cheap: the sync
+    // work, even when the database write itself succeeded (Storage can fail
+    // while the database is reachable). Re-queueing is safe and cheap: the sync
     // pass writes to the same document id with merge:true, so the retry
     // uploads the photo and patches the URL in without duplicating anything.
     final photoStillPending = _evidenceImage != null && photoUrl == null;
 
     // Same shape as the photo: a staged file exists on this device and has
     // no URL yet, so the record is not finished until the queue drains.
-    // (This is the only unsigned-in-Firestore state that can reach here —
+    // (This is the only unsigned-in-database state that can reach here —
     // a staging failure above either uploaded directly or blocked the
     // submit, so there is always either a URL or a staged file by now.)
     final signatureStillPending = localSignaturePath != null;

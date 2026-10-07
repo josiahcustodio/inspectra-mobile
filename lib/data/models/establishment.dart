@@ -40,7 +40,7 @@ class Establishment extends HiveObject {
   @HiveField(9, defaultValue: '')
   final String barangay;
 
-  // Firestore doc id from the `categories` collection — a string, not a
+  // The id from the `categories` table — a string, not a
   // sequential index. Nullable because older synced records may predate
   // this field.
   @HiveField(10)
@@ -142,5 +142,5 @@ class Establishment extends HiveObject {
   }
 
   // There is deliberately no toJson(): the web admin owns establishment data,
-  // so this model is only ever deserialized, never written back to Firestore.
+  // so this model is only ever deserialized, never written back to the server.
 }

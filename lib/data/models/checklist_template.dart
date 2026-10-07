@@ -51,7 +51,7 @@ class ChecklistTemplate extends HiveObject {
       subCategory: json['sub_category'] as String? ?? 'General',
       item: json['item_name'] as String? ?? json['item'] as String? ?? '',
       weight: (json['weight'] as num?)?.toInt() ?? 5,
-      // Coerced rather than cast. Every template doc in Firestore carries a
+      // Coerced rather than cast. Every template row carries a
       // string today, but `category_id` has drifted to a raw number before now
       // (three establishments still hold the int 1), and syncData already
       // defends against it the same way.

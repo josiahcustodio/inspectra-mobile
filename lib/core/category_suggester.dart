@@ -2,7 +2,7 @@
 /// Offline keyword rules that propose a checklist category from a business name
 /// (D6).
 ///
-/// Deliberately pure Dart — no Flutter import, no Hive, no Firestore — because
+/// Deliberately pure Dart — no Flutter import, no Hive, no backend — because
 /// this is the one piece of the picker whose output lands on a government audit
 /// record, and it has to be testable without a device, a box or a network.
 ///
@@ -268,7 +268,7 @@ class CategorySuggester {
   ///
   /// [availableCategoryIds] is required rather than optional because validating
   /// the suggestion is not a courtesy the caller may skip: a rule may point at
-  /// a category that has since been deleted from Firestore, has no checklist on
+  /// a category that has since been deleted from the server, has no checklist on
   /// this device, or is unselectable for want of a demerit weighting (D25).
   /// Offering any of those would hand the inspector a suggestion they cannot
   /// act on.

@@ -531,15 +531,7 @@ class SyncService {
         throw Exception('Inspection log $logId not found.');
       }
 
-      final data = Map<String, dynamic>.from(row);
-
-      // Kept under both keys — the details screen historically read
-      // `inspection_results`.
-      if (data['results'] != null) {
-        data['inspection_results'] = data['results'];
-      }
-
-      return data;
+      return Map<String, dynamic>.from(row);
     } catch (e) {
       debugPrint('Fetch inspection details failed: $e');
       rethrow;

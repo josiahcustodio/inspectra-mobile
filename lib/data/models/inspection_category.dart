@@ -43,7 +43,8 @@ class InspectionCategory extends HiveObject {
       id: json['id']?.toString() ?? '',
       name: json['name'] as String? ?? 'Unknown',
       // `as num` then toInt: the seeding script writes an int, but a value
-      // hand-edited in the Firebase console comes back as a double.
+      // hand-edited in a console has come back as a double before (Firestore
+      // era); the cast tolerates either.
       sortOrder: (json['sort_order'] as num?)?.toInt() ?? 9999,
     );
   }
