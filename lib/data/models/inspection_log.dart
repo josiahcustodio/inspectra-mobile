@@ -78,7 +78,12 @@ class InspectionLog {
     this.localSignaturePath,
     List<Map<String, dynamic>>? results,
   })  : id = (id == null || id.isEmpty) ? const Uuid().v4() : id,
-        inspectionDate = inspectionDate ?? DateTime.now().toIso8601String(),
+        // toUtc(), not local time: inspection_date is a timestamptz column
+        // now, and Dart's local toIso8601String carries no UTC offset — the
+        // server would misread it as UTC and shift every Manila timestamp
+        // by 8 hours.
+        inspectionDate =
+            inspectionDate ?? DateTime.now().toUtc().toIso8601String(),
         results = results ?? const [];
 
   factory InspectionLog.fromJson(Map<String, dynamic> json) {
@@ -105,6 +110,26 @@ class InspectionLog {
     );
   }
 
+  /// Matches a trailing UTC 'Z' or a ±HH:MM / ±HHMM offset on an ISO string.
+  static final RegExp _hasUtcOffset = RegExp(r'(Z|[+-]\d{2}:?\d{2})$');
+
+  /// Normalizes an ISO timestamp for the timestamptz column: a string with
+  /// no offset came from a pre-migration build's DateTime.now() (device
+  /// LOCAL wall-clock — Hive queue entries written before the update still
+  /// carry these), and the server would misread it as UTC, landing Manila
+  /// inspections 8 hours early. Dart parses an offset-less string as local
+  /// time, so parse → toUtc() recovers the real instant. Applied at the
+  /// serialization boundary so EVERY write path inherits the rule, not just
+  /// the constructor default.
+  static String _normalizeTimestamp(String value) {
+    if (_hasUtcOffset.hasMatch(value)) return value;
+    try {
+      return DateTime.parse(value).toUtc().toIso8601String();
+    } catch (_) {
+      return value; // unparseable — let the server reject it loudly
+    }
+  }
+
   // [REF: INSPECTION_LOG_MODEL_WRITE]
   Map<String, dynamic> toJson() {
     return {
@@ -121,7 +146,7 @@ class InspectionLog {
       'total_demerits': totalDemerits,
       'percentage_rating': percentageRating,
       'remarks': remarks,
-      'inspection_date': inspectionDate,
+      'inspection_date': _normalizeTimestamp(inspectionDate),
       'photo_evidence_url': photoEvidenceUrl,
       // Strictly as a pair, in both directions: a hash without an image
       // Firestore can see verifies nothing, and a URL without its hash loses

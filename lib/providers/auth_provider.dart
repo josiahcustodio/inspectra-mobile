@@ -1,13 +1,25 @@
-import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
+import 'package:supabase_flutter/supabase_flutter.dart' as supa show AuthState;
+
 import '../data/services/auth_service.dart';
 import '../data/services/mfa_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _errorMessage;
-  MultiFactorResolver? _mfaResolver;
+
+  /// True when the session is signed in at AAL1 but the account has a
+  /// verified TOTP factor — the second factor is still owed. Replaces the
+  /// Firebase-era MultiFactorResolver: Supabase has no mid-sign-in limbo,
+  /// the session exists and the restrictive RLS policies block its data
+  /// access until the code upgrades it to AAL2.
+  bool _needsAal2 = false;
+
   bool? _hasTotpEnrolled; // null = unknown/loading, false = needs enrollment
+  StreamSubscription<supa.AuthState>? _authSub;
 
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
@@ -15,16 +27,20 @@ class AuthProvider extends ChangeNotifier {
   User? get user => AuthService.currentUser;
   bool get isAuthenticated => user != null;
 
-  MultiFactorResolver? get mfaResolver => _mfaResolver;
-  bool get mfaChallengePending => _mfaResolver != null;
+  /// Kept under its historical name — the router and MfaVerifyScreen key off
+  /// it — but it now means "signed in, TOTP code still owed this session".
+  bool get mfaChallengePending => isAuthenticated && _needsAal2;
   bool? get hasTotpEnrolled => _hasTotpEnrolled;
   bool get requiresMfaEnrollment => isAuthenticated && _hasTotpEnrolled == false;
   bool get mfaStatusUnknown => isAuthenticated && _hasTotpEnrolled == null;
 
   // MFA enrollment requires a verified email. Google sign-in accounts are
-  // already verified by Google; email/password accounts must click the
-  // link sent on sign-up.
-  bool get needsEmailVerification => isAuthenticated && user!.emailVerified == false;
+  // already verified by Google; email/password accounts confirm via the
+  // sign-up link — and since confirmation is required project-wide, a
+  // session without a confirmed email is rare (it can only arise if the
+  // requirement was ever toggled off). The gate stays for that case.
+  bool get needsEmailVerification =>
+      isAuthenticated && user!.emailConfirmedAt == null;
 
   AuthProvider() {
     _init();
@@ -32,24 +48,28 @@ class AuthProvider extends ChangeNotifier {
 
   // [REF: AUTH_STATE_LISTENER]
   void _init() {
-    // Listen to Firebase auth state changes
-    AuthService.authStateChanges.listen((User? firebaseUser) async {
-      debugPrint('Firebase Auth State Changed: ${firebaseUser?.uid ?? "signed out"}');
-      _mfaResolver = null;
-      if (firebaseUser != null) {
-        // Return value deliberately discarded. The role it resolves is not
-        // read anywhere in this app — every authorisation decision on mobile
-        // is made by firestore.rules, not by the client. The call itself is
-        // load-bearing and must stay: it CREATES the profiles/{uid} document
-        // those rules key off, so dropping it would lock a new inspector out
-        // of their own data on first sign-in.
-        await AuthService.ensureProfile(firebaseUser);
-        _hasTotpEnrolled = await MfaService.hasTotpEnrolled(firebaseUser);
+    _authSub = AuthService.authStateChanges.listen((supa.AuthState state) async {
+      final session = state.session;
+      debugPrint('Auth state changed (${state.event}): '
+          '${session?.user.id ?? "signed out"}');
+      if (session != null) {
+        // No ensureProfile() call any more: the handle_new_user() trigger
+        // creates profiles/{uid} server-side the moment the auth user is
+        // born, so there is nothing for the client to bootstrap.
+        _needsAal2 = MfaService.needsAal2Upgrade;
+        _hasTotpEnrolled = await MfaService.hasTotpEnrolled();
       } else {
+        _needsAal2 = false;
         _hasTotpEnrolled = null;
       }
       notifyListeners();
     });
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
   }
 
   Future<bool> signInWithGoogle() async {
@@ -59,9 +79,6 @@ class AuthProvider extends ChangeNotifier {
     try {
       final success = await AuthService.signInWithGoogle();
       return success;
-    } on FirebaseAuthMultiFactorException catch (e) {
-      _mfaResolver = e.resolver;
-      return false;
     } catch (e) {
       _setErrorMessage(e is Exception ? e.toString().replaceFirst('Exception: ', '') : e.toString());
       return false;
@@ -76,10 +93,10 @@ class AuthProvider extends ChangeNotifier {
 
     try {
       final success = await AuthService.signInWithEmailPassword(email, password);
+      // If a TOTP factor is enrolled the session arrives at AAL1 and the
+      // auth listener flips mfaChallengePending; the router then routes to
+      // /mfa-verify. Nothing to catch here.
       return success;
-    } on FirebaseAuthMultiFactorException catch (e) {
-      _mfaResolver = e.resolver;
-      return false;
     } catch (e) {
       _setErrorMessage(e is Exception ? e.toString().replaceFirst('Exception: ', '') : e.toString());
       return false;
@@ -93,12 +110,8 @@ class AuthProvider extends ChangeNotifier {
     _setErrorMessage(null);
 
     try {
-      final resolver = _mfaResolver;
-      if (resolver == null) {
-        throw Exception('Verification session expired. Please sign in again.');
-      }
-      await MfaService.completeSignIn(resolver: resolver, code: code);
-      _mfaResolver = null;
+      await MfaService.completeSignIn(code: code);
+      _needsAal2 = false;
       return true;
     } catch (e) {
       _setErrorMessage(e is Exception ? e.toString().replaceFirst('Exception: ', '') : e.toString());
@@ -108,15 +121,17 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  void cancelMfaChallenge() {
-    _mfaResolver = null;
-    notifyListeners();
+  /// Abandons the pending TOTP challenge. The half-authenticated AAL1
+  /// session must not linger (it holds a working refresh token), so this
+  /// signs out of it entirely.
+  Future<void> cancelMfaChallenge() async {
+    await signOut();
   }
 
   Future<void> refreshMfaStatus() async {
-    final u = user;
-    if (u == null) return;
-    _hasTotpEnrolled = await MfaService.hasTotpEnrolled(u);
+    if (!isAuthenticated) return;
+    _needsAal2 = MfaService.needsAal2Upgrade;
+    _hasTotpEnrolled = await MfaService.hasTotpEnrolled();
     notifyListeners();
   }
 

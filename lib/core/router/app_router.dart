@@ -39,21 +39,24 @@ GoRouter createAppRouter(AuthProvider authProvider) {
       final bool isGoingToMfaEnroll = loc == '/mfa-enroll';
       final bool isGoingToVerifyEmail = loc == '/verify-email';
 
-      // Unauthenticated: only /login and /mfa-verify are reachable.
-      // /mfa-verify runs mid sign-in, while a MultiFactorResolver is
-      // pending and currentUser is still null.
+      // Unauthenticated: only /login is reachable. (Under Supabase there is
+      // no pre-session MFA state — the Firebase resolver limbo is gone; a
+      // second-factor challenge now happens on an existing AAL1 session.)
       if (!isAuthenticated) {
-        // A second-factor challenge just came back (e.g. from the Google
-        // popup flow) — push to /mfa-verify even if we're sitting on
-        // /login, since nothing else triggers this navigation.
-        if (authProvider.mfaChallengePending) {
-          return isGoingToMfaVerify ? null : '/mfa-verify';
-        }
-        if (!isGoingToLogin && !isGoingToMfaVerify) return '/login';
+        if (!isGoingToLogin) return '/login';
         return null;
       }
 
-      // Authenticated but sitting on /login or /mfa-verify: leave.
+      // Signed in at AAL1 with a TOTP factor enrolled: the second factor is
+      // still owed. Pin to /mfa-verify — data access is blocked server-side
+      // by the restrictive AAL2 RLS policies until the code is presented,
+      // so there is nothing useful anywhere else anyway.
+      if (authProvider.mfaChallengePending) {
+        return isGoingToMfaVerify ? null : '/mfa-verify';
+      }
+
+      // Authenticated at full assurance but sitting on /login or
+      // /mfa-verify: leave.
       if (isGoingToLogin || isGoingToMfaVerify) {
         return '/sync';
       }

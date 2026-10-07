@@ -1,8 +1,8 @@
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 
+import '../../data/services/auth_service.dart';
 import '../../data/services/mfa_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../core/theme/app_colors.dart';
@@ -81,10 +81,9 @@ class ProfileScreen extends StatelessWidget {
           ElevatedButton(
             onPressed: () async {
               ctx.pop();
-              final user = authProvider.user;
-              if (user == null) return;
+              if (authProvider.user == null) return;
               try {
-                await MfaService.resetAuthenticator(user);
+                await MfaService.resetAuthenticator();
                 await authProvider.refreshMfaStatus();
                 // Router redirect sends the user to /mfa-enroll automatically.
               } catch (e) {
@@ -111,8 +110,8 @@ class ProfileScreen extends StatelessWidget {
 
   // ─── My Account Dialog ──────────────────────────────────────────────────────
   void _showMyAccount(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    final name = user?.displayName ?? 'Inspector';
+    final user = AuthService.currentUser;
+    final name = AuthService.displayName ?? 'Inspector';
     final email = user?.email ?? 'No email';
 
     showDialog(
@@ -279,10 +278,10 @@ class ProfileScreen extends StatelessWidget {
     final primary = Theme.of(context).colorScheme.primary;
     final authProvider = Provider.of<AuthProvider>(context);
     final user = authProvider.user;
-    final displayName = user?.displayName?.isNotEmpty == true
-        ? user!.displayName!
-        : user?.email ?? 'Inspector';
+    final displayName =
+        AuthService.displayName ?? user?.email ?? 'Inspector';
     final subtitle = user?.email ?? 'City Health Office';
+    final photoUrl = AuthService.photoUrl;
 
     return Scaffold(
       body: SafeArea(
@@ -293,10 +292,9 @@ class ProfileScreen extends StatelessWidget {
               CircleAvatar(
                 radius: 48,
                 backgroundColor: primary.withValues(alpha: 0.15),
-                backgroundImage: user?.photoURL != null
-                    ? NetworkImage(user!.photoURL!)
-                    : null,
-                child: user?.photoURL == null
+                backgroundImage:
+                    photoUrl != null ? NetworkImage(photoUrl) : null,
+                child: photoUrl == null
                     ? Icon(Icons.person_rounded, size: 52, color: primary)
                     : null,
               ),

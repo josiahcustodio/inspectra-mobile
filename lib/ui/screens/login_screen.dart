@@ -522,7 +522,12 @@ class _LoginScreenState extends State<LoginScreen> {
               if (ctx.mounted) {
                 ctx.pop();
                 if (success) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Account created successfully!')));
+                  // Supabase keeps the new account signed out until the
+                  // verification link is clicked, so tell the user what
+                  // comes next instead of waiting for a session.
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text(
+                          'Account created! Check your inbox to verify your email, then sign in.')));
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(authProvider.errorMessage ?? 'Error')));
                 }

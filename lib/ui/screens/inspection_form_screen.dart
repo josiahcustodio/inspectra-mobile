@@ -523,7 +523,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
       // establishment; both come from what the inspector picked.
       categoryId: picked.category.id,
       categoryName: picked.category.name,
-      inspectorName: AuthService.currentUser?.displayName ??
+      inspectorName: AuthService.displayName ??
           AuthService.currentUser?.email ??
           'Inspector',
       totalDemerits: ratingProvider.totalDemerits,

@@ -1,6 +1,6 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/checklist_template.dart';
 import '../models/establishment.dart';
@@ -69,18 +69,37 @@ class OfflineService {
     await _prefsBox.put(key, value);
   }
 
-  /// Syncs master data (establishments, templates, categories) from Firestore
+  /// Fetches every row of [table], paging past PostgREST's max-rows cap
+  /// (1000 on Supabase by default — establishments alone is ~4500 rows, so
+  /// a bare select() would silently truncate the offline mirror).
+  static Future<List<Map<String, dynamic>>> _fetchAllRows(String table) async {
+    const page = 1000;
+    final rows = <Map<String, dynamic>>[];
+    for (var from = 0;; from += page) {
+      // order('id') is load-bearing: LIMIT/OFFSET over an unordered result
+      // is non-deterministic across the separate page requests — without it
+      // a row can slip between shifted page boundaries during a concurrent
+      // masterlist import and silently vanish from the offline mirror.
+      final List<dynamic> data = await Supabase.instance.client
+          .from(table)
+          .select()
+          .order('id', ascending: true)
+          .range(from, from + page - 1);
+      rows.addAll(data.cast<Map<String, dynamic>>());
+      if (data.length < page) return rows;
+    }
+  }
+
+  /// Syncs master data (establishments, templates, categories) from Supabase
   /// into local Hive boxes for offline use.
   // [REF: MASTER_DATA_SYNC]
   static Future<void> syncData() async {
-    final db = FirebaseFirestore.instance;
-
     try {
-      // ── 1. Fetch categories lookup map: { docId -> name } ────────────────
-      final categoriesSnapshot = await db.collection('categories').get();
+      // ── 1. Fetch categories lookup map: { id -> name } ────────────────
+      final categoryRows = await _fetchAllRows('categories');
       final Map<String, String> categoryMap = {
-        for (final doc in categoriesSnapshot.docs)
-          doc.id: (doc.data()['name'] as String? ?? 'Unknown')
+        for (final row in categoryRows)
+          row['id'].toString(): (row['name'] as String? ?? 'Unknown')
       };
 
       // Parse before touching the box, for the reason the template pass below
@@ -102,9 +121,9 @@ class OfflineService {
       // fallback. Fixing the map itself is out of scope here — it still
       // affects nothing the picker reads.
       final serverCategories = <InspectionCategory>[];
-      for (final doc in categoriesSnapshot.docs) {
-        final data = Map<String, dynamic>.from(doc.data());
-        data['id'] = doc.id;
+      for (final row in categoryRows) {
+        final data = Map<String, dynamic>.from(row);
+        data['id'] = data['id'].toString();
         serverCategories.add(InspectionCategory.fromJson(data));
       }
 
@@ -135,21 +154,12 @@ class OfflineService {
         );
       }
 
-      // Fallback for known Supabase category IDs if they didn't migrate properly
-      final defaultCategories = {
-        '1': 'Food Establishment',
-        '2': 'Water',
-        '3': 'Institutional',
-      };
-      for (final entry in defaultCategories.entries) {
-        if (!categoryMap.containsKey(entry.key) && !categoryMap.containsValue(entry.value)) {
-          categoryMap[entry.key] = entry.value;
-        }
-      }
+      // (The old defaultCategories fallback block is gone: it existed to
+      // paper over the LAST Supabase→Firestore migration, and all three of
+      // its hardcoded names were documented stale fabrications.)
 
       // ── 2. Sync establishments ────────────────────────────────────────────
-      final establishmentsSnapshot =
-          await db.collection('establishments').get();
+      final establishmentRows = await _fetchAllRows('establishments');
       final estBox = Hive.box<Establishment>(establishmentsBoxName);
 
       // Parse the whole snapshot before touching the box. fromJson casts
@@ -158,9 +168,8 @@ class OfflineService {
       // leave the device with an empty box while the catch below reports that
       // it is "relying on local cache".
       final serverEsts = <Establishment>[];
-      for (final doc in establishmentsSnapshot.docs) {
-        final data = Map<String, dynamic>.from(doc.data());
-        data['id'] = doc.id;
+      for (final row in establishmentRows) {
+        final data = Map<String, dynamic>.from(row);
 
         // [REF: DELISTED_FILTER]
         // The web admin marks establishments that dropped off the city
@@ -269,8 +278,7 @@ class OfflineService {
       await estBox.putAll({for (final est in serverEsts) est.id: est});
 
       // ── 3. Sync checklist templates ───────────────────────────────────────
-      final templatesSnapshot =
-          await db.collection('checklist_templates').get();
+      final templateRows = await _fetchAllRows('checklist_templates');
       final tempBox = Hive.box<ChecklistTemplate>(templatesBoxName);
 
       // Parse before clearing, for the same reason as the establishments pass
@@ -279,9 +287,8 @@ class OfflineService {
       // at all while the catch below reported it was "relying on local cache".
       // An inspection form with zero items is the visible symptom.
       final serverTemplates = <ChecklistTemplate>[];
-      for (final doc in templatesSnapshot.docs) {
-        final data = Map<String, dynamic>.from(doc.data());
-        data['id'] = doc.id;
+      for (final row in templateRows) {
+        final data = Map<String, dynamic>.from(row);
 
         // Robust category resolution
         String? catId = data['category_id']?.toString();

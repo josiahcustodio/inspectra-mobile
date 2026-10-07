@@ -1,9 +1,9 @@
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'firebase_options.dart';
+import 'core/supabase_config.dart';
 import 'core/theme/app_theme.dart';
 import 'data/services/offline_service.dart';
 import 'providers/rating_provider.dart';
@@ -32,9 +32,10 @@ void main() async {
       );
     };
 
-    // Initialize Firebase
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
+    // Initialize Supabase (auth session persists across restarts on-device)
+    await Supabase.initialize(
+      url: SupabaseConfig.url,
+      publishableKey: SupabaseConfig.publishableKey,
     );
 
     // Initialize offline storage

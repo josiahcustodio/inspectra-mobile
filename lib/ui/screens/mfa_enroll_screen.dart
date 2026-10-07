@@ -1,5 +1,4 @@
 import 'dart:ui';
-import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -28,7 +27,7 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
   String? _loadError;
   String? _codeError;
   bool _showManualKey = false;
-  TotpSecret? _secret;
+  TotpEnrollment? _enrollment;
   String? _qrUrl;
 
   @override
@@ -56,15 +55,13 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
     });
 
     try {
-      final secret = await MfaService.startEnrollment(user);
-      final qrUrl = await MfaService.buildQrUrl(
-        secret,
-        accountName: user.email ?? user.uid,
-      );
+      // The enroll response carries the otpauth:// URI directly — Supabase
+      // builds it server-side with the issuer set at enroll time.
+      final enrollment = await MfaService.startEnrollment();
       if (!mounted) return;
       setState(() {
-        _secret = secret;
-        _qrUrl = qrUrl;
+        _enrollment = enrollment;
+        _qrUrl = enrollment.uri;
         _loadingSecret = false;
       });
     } catch (e) {
@@ -81,11 +78,10 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
   // [REF: MFA_ENROLL_VERIFY]
   Future<void> _verify() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final user = authProvider.user;
-    final secret = _secret;
+    final enrollment = _enrollment;
     final code = _codeController.text.trim();
 
-    if (user == null || secret == null) return;
+    if (enrollment == null) return;
     if (code.length != 6) {
       setState(() => _codeError = 'Enter the 6-digit code');
       return;
@@ -97,11 +93,11 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
     });
 
     try {
+      // Verifying the code completes the enrollment AND upgrades this
+      // session to AAL2 — no separate sign-in challenge follows.
       await MfaService.completeEnrollment(
-        user: user,
-        secret: secret,
+        factorId: enrollment.factorId,
         code: code,
-        displayName: 'Authenticator App',
       );
       await authProvider.refreshMfaStatus();
       // Router redirect takes over from here.
@@ -245,8 +241,8 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
     }
 
     final qrUrl = _qrUrl;
-    final secret = _secret;
-    if (qrUrl == null || secret == null) return const SizedBox.shrink();
+    final enrollment = _enrollment;
+    if (qrUrl == null || enrollment == null) return const SizedBox.shrink();
 
     return Column(
       children: [
@@ -285,7 +281,7 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: SelectableText(
-              secret.secretKey,
+              enrollment.secret,
               style: const TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 16,
