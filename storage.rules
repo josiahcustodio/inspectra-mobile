@@ -1,87 +1,9 @@
 rules_version = '2';
 
-// Firebase Storage security rules for inspectra-firebase.
-//
-// Mirrors the role model in firestore.rules: only a signed-in user who has a
-// profiles/{uid} document with role 'officer' or 'admin' may touch anything.
-// Storage rules can read Firestore, so the role lives in exactly one place
-// rather than being duplicated here.
-//
-// Deploy with:  firebase deploy --only storage
+// FROZEN 2026-10-11: Inspectra migrated to Supabase (fwtgdgeiffnvqyrobixc).
+// Deny everything. Pre-freeze rules: storage.rules.pre-freeze.bak.
 service firebase.storage {
   match /b/{bucket}/o {
-
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-
-    // Guarded with exists() for the same reason as firestore.rules: a brand-new
-    // signed-in user has no profile document yet, and reading .role off a
-    // missing document errors the whole rule instead of cleanly returning "no
-    // role".
-    function role() {
-      return firestore.exists(/databases/(default)/documents/profiles/$(request.auth.uid))
-        ? firestore.get(/databases/(default)/documents/profiles/$(request.auth.uid)).data.role
-        : null;
-    }
-
-    function isAdmin() {
-      return isAuthenticated() && role() == 'admin';
-    }
-
-    function isAuthorized() {
-      return isAuthenticated() && (role() == 'admin' || role() == 'officer');
-    }
-
-    // Belt-and-braces on top of the client-side compression in
-    // inspection_form_screen.dart (_pickImage caps width at 1600px and quality
-    // at 70%, which lands well under 1 MB). A compressed field photo should
-    // never approach 5 MB, so anything that does is either a bug or an abuse
-    // attempt and is rejected before it costs bandwidth.
-    function isValidEvidenceImage() {
-      return request.resource.size < 5 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
-    }
-
-    // Inspection evidence photos, written by SyncService.uploadImage.
-    // Path shape: inspection_evidence/{establishmentId}/{timestamp}.jpg
-    match /inspection_evidence/{establishmentId}/{fileName} {
-      allow read: if isAuthorized();
-      allow create: if isAuthorized() && isValidEvidenceImage();
-      // Evidence is an audit record — an officer may add one but may not
-      // rewrite or destroy one after the fact. Only an admin can.
-      allow update, delete: if isAdmin();
-    }
-
-    // A 600px-wide signature PNG lands around 10–30 KB, so 200 KB is already
-    // generous; anything bigger is a bug or an abuse attempt. PNG exactly —
-    // not image/* — because SyncService only ever exports PNG and the web
-    // masterlist renders these over its DATE INSPECTED cells as-is.
-    function isValidSignatureImage() {
-      return request.resource.size < 200 * 1024
-        && request.resource.contentType == 'image/png';
-    }
-
-    // Inspector sign-off signatures, written by SyncService at
-    // signaturePath. Path shape: signatures/{establishmentId}/{logId}.png
-    match /signatures/{establishmentId}/{fileName} {
-      allow read: if isAuthorized();
-      // Officers get UPDATE here, unlike the evidence block above — and that
-      // is a consequence of the path, not a loosening of the audit stance.
-      // The photo path embeds a timestamp, so a photo retry is always a
-      // fresh create; the signature path is deterministic on the log id
-      // precisely so a retry overwrites its own earlier attempt instead of
-      // littering the bucket, and in Storage terms that overwrite is an
-      // update. Denying it would make every retried signature upload fail
-      // forever. The log document's signature_sha256 is what pins the final
-      // bytes to the record.
-      allow create, update: if isAuthorized() && isValidSignatureImage();
-      // No delete for anyone: the signature is the sign-off that makes the
-      // inspection official — evidence, same as the photos.
-    }
-
-    // Everything else is denied. Add an explicit match block above this one
-    // before writing to any new path.
     match /{allPaths=**} {
       allow read, write: if false;
     }
