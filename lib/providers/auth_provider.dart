@@ -34,11 +34,11 @@ class AuthProvider extends ChangeNotifier {
   bool get requiresMfaEnrollment => isAuthenticated && _hasTotpEnrolled == false;
   bool get mfaStatusUnknown => isAuthenticated && _hasTotpEnrolled == null;
 
-  // MFA enrollment requires a verified email. Google sign-in accounts are
-  // already verified by Google; email/password accounts confirm via the
-  // sign-up link — and since confirmation is required project-wide, a
-  // session without a confirmed email is rare (it can only arise if the
-  // requirement was ever toggled off). The gate stays for that case.
+  // MFA enrollment requires a verified email. Email/password accounts
+  // confirm via the sign-up link, and since confirmation is required
+  // project-wide, a session without a confirmed email is rare (it can only
+  // arise if the requirement was ever toggled off). The gate stays for that
+  // case.
   bool get needsEmailVerification =>
       isAuthenticated && user!.emailConfirmedAt == null;
 
@@ -70,21 +70,6 @@ class AuthProvider extends ChangeNotifier {
   void dispose() {
     _authSub?.cancel();
     super.dispose();
-  }
-
-  Future<bool> signInWithGoogle() async {
-    _setLoading(true);
-    _setErrorMessage(null);
-
-    try {
-      final success = await AuthService.signInWithGoogle();
-      return success;
-    } catch (e) {
-      _setErrorMessage(e is Exception ? e.toString().replaceFirst('Exception: ', '') : e.toString());
-      return false;
-    } finally {
-      _setLoading(false);
-    }
   }
 
   Future<bool> signInWithEmailPassword(String email, String password) async {

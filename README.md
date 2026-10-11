@@ -83,7 +83,7 @@ A high-performance, offline-first Flutter mobile application tailored for City H
 | File | Purpose |
 |---|---|
 | `main.dart` | App entry point. Initializes Supabase, Hive offline storage, and sets up the global `MultiProvider` tree with `AuthProvider`, `RatingProvider`, `PendingInspectionsProvider`, and `InspectionHistoryProvider`. Launches the `ClowtecInspectorApp` widget which applies `AppTheme.lightTheme` and starts at `AuthWrapper`. |
-| `core/supabase_config.dart` | Compiled-in Supabase project URL, publishable key, and the Google OAuth web client id (`serverClientId` for native Google sign-in). Public by design; RLS is the protection. |
+| `core/supabase_config.dart` | Compiled-in Supabase project URL and publishable key. Public by design; RLS is the protection. |
 
 ---
 
@@ -124,7 +124,7 @@ All data layer logic: models, local storage, and remote API services.
 
 | File | Purpose |
 |---|---|
-| `auth_service.dart` | Static service wrapping Supabase Auth (GoTrue). Methods: `signInWithGoogle()` (popup for Web, native for mobile), `signInWithEmailPassword()`, `signUpWithEmailPassword()` (also sets display name), `sendPasswordResetEmail()`, `signOut()`. Exposes `currentUser` and `authStateChanges` stream. |
+| `auth_service.dart` | Static service wrapping Supabase Auth (GoTrue). Methods: `signInWithEmailPassword()`, `signUpWithEmailPassword()` (also sets display name), `sendPasswordResetEmail()`, `signOut()`. Exposes `currentUser` and `authStateChanges` stream. |
 | `offline_service.dart` | Manages all local Hive storage and the **download** half of sync. Registers Hive adapters for `Establishment`, `ChecklistTemplate` and `InspectionCategory`, and opens five boxes. `syncData()` fetches categories, establishments and checklist templates from Supabase into local Hive boxes (paged past the 1000-row PostgREST cap) — parsing each snapshot *completely* before replacing its box, so a single type-drifted document can no longer leave the device with an empty cache. The categories pass additionally **refuses to clear its box on an empty snapshot**, as insurance against a genuinely empty server table — a network failure throws and keeps the cache, but an empty result must not wipe a working picker; the establishment and template passes do not yet do this. Its establishment pass carries `[REF: ESTABLISHMENT_UPGRADE_BRIDGE]`, a temporary branch that preserves an establishment an older build created offline (and never uploads it); it is removed one release from now. Read helpers: `readPref()`, `writePref()`, `getLocalEstablishments()`, `getEstablishmentById()`, `getLocalCategoryOptions()` (the picker's rows, each already marked selectable or not), `getLocalTemplatesByCategoryId()` (the checklist for one category, **by document id**) and the shared `resolveTemplatesFor()`, which carries a temporary name-matching fallback (`[REF: TEMPLATE_LOOKUP_ID_BRIDGE]`) for a template box cached before `categoryId` existed. Exposes the `inspectionsQueueBox` for the offline submission queue. There are **no establishment write helpers**. |
 | `sync_service.dart` | The **upload** half of offline-first, plus the cloud reads the UI needs. Methods: `evidencePath()`, `uploadImage()` / `uploadSignatureBytes()` (Supabase Storage — private buckets, long-lived signed URLs), `submitInspectionLog()`, `syncPendingInspections()` (drains the offline queue; deletes a local entry only after the database write succeeds), `syncSingleInspection()`, `fetchInspectionHistory()`, `fetchInspectionDetails()`. **No establishment writes** — `insertEstablishment`, `updateEstablishment`, `deleteEstablishment` and `syncPendingEstablishments` were all removed. **No category read either:** `fetchCategories()` was deleted in Chunk 3, because the picker has to work in a dead zone and therefore reads the Hive box `OfflineService.syncData` fills. In both places a comment and a banner stay where the code was, recording that `establishments` is pull-only and that categories come from Hive. |
 
@@ -135,7 +135,7 @@ Reactive state management using the `provider` package (`ChangeNotifier`).
 
 | File | Purpose |
 |---|---|
-| `auth_provider.dart` | Wraps `AuthService` for reactive auth state. Manages `isLoading` and `errorMessage`. Methods: `signInWithGoogle()`, `signInWithEmailPassword()`, `signUpWithEmailPassword()`, `sendPasswordResetEmail()`, `signOut()`. Listens to the Supabase `onAuthStateChange` stream, tracks the MFA assurance level (AAL1 vs AAL2), and calls `notifyListeners()` on changes. |
+| `auth_provider.dart` | Wraps `AuthService` for reactive auth state. Manages `isLoading` and `errorMessage`. Methods: `signInWithEmailPassword()`, `signUpWithEmailPassword()`, `sendPasswordResetEmail()`, `signOut()`. Listens to the Supabase `onAuthStateChange` stream, tracks the MFA assurance level (AAL1 vs AAL2), and calls `notifyListeners()` on changes. |
 | `rating_provider.dart` | Manages real-time inspection scoring state. Stores per-item `answers` (Pass/Fail) and `itemNotes` (deficiency text). Computes `totalDemerits`, `score` (0–100 clamped), `isCompleted` (all items answered), and `ratingLabel` (`Excellent` ≥90, `Very Satisfactory` ≥70, `Satisfactory` ≥50, `Action Required` <50). Methods: `setAnswer()`, `setNote()`, `initWeights()`, `reset()`. |
 | `pending_inspections_provider.dart` | Tracks the offline `inspections_queue` Hive box. Provides `pendingCount`, `pendingItems`, `isSyncing`. Listens to Hive box changes live via `.listenable()`. Methods: `submitAll()` (bulk sync all pending via `SyncService`), `submitSingle(id)` (sync one item). |
 | `inspection_history_provider.dart` | Fetches and merges inspection history from the server and the local offline queue. Provides `logs`, `establishmentNames`, `isLoading`, `error`, `isEmpty`. Deduplicates by ID and sorts by date descending. Methods: `fetchHistory()`, `refresh()`. |
@@ -172,7 +172,7 @@ All user interface code: screens and reusable widgets.
 ---
 
 ##### `login_screen.dart`
-**Purpose:** Authentication UI. Provides Email/Password login form, "Forgot Password?" link, "Sign in with Google" button, and a "Don't have an account? Sign Up" link. Features a glassmorphic background with blurred decorative circles.
+**Purpose:** Authentication UI. Provides Email/Password login form, "Forgot Password?" link, and a "Don't have an account? Sign Up" link. Features a glassmorphic background with blurred decorative circles.
 
 | Category | Details |
 |---|---|
@@ -372,7 +372,6 @@ Reusable UI components.
 
 ## 🔐 Security Context & Best Practices
 
-- No per-platform Google config files: native Google sign-in uses the web OAuth client id compiled into `supabase_config.dart` as `serverClientId`, plus an Android OAuth client registered (package + SHA-1s) in the Google Cloud console.
 - Offline data stored in Hive is unencrypted. Ensure physical device security protocols are observed during field use.
 - Postgres row-level security (`migration/sql/02_rls.sql` in the Inspectra root) governs data access on the backend, plus a restrictive MFA policy: a session that has not presented its TOTP code (AAL1) reads nothing. Note what the policies do **not** do: the `establishments` write policy is intentionally `is_authorized()`, not `is_admin()`, because the web admin dashboard lets officer-role users create and edit establishments and narrowing it would lock them out (decision D17). That the mobile app never writes establishments is enforced by there being no write call in `sync_service.dart`, not by a policy.
 - Offline data in Hive is keyed by field *number*. Never remove or renumber a `@HiveField` on a model that has already shipped — it corrupts the stored box on upgrade. Fields that stop being used are left declared.

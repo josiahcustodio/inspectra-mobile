@@ -261,82 +261,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
               ),
-              
-              const SizedBox(height: 16),
-              
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(height: 1, color: AppColors.border)
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      'OR',
-                      style: TextStyle(
-                        fontFamily: '.SF Pro Text',
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black45,
-                      ),
-                    ),
-                  ),
-                  Expanded(child: Container(height: 1, color: AppColors.border)),
-                ],
-              ),
-              
+
               const SizedBox(height: 16),
 
-              // Authentic Google Sign In Button
-              if (authProvider.isLoading)
-                const Center(child: CircularProgressIndicator(color: AppColors.brandStrong))
-              else
-                OutlinedButton(
-                  onPressed: () async {
-                    final success = await authProvider.signInWithGoogle();
-                    if (!success && authProvider.errorMessage != null && context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(authProvider.errorMessage!)),
-                      );
-                    }
-                  },
-                  style: OutlinedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black87,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    side: const BorderSide(color: AppColors.border, width: 1),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Image.network(
-                        'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/768px-Google_%22G%22_logo.svg.png',
-                        height: 24,
-                        width: 24,
-                        errorBuilder: (context, error, stackTrace) => const Icon(Icons.g_mobiledata, size: 32),
-                      ),
-                      const SizedBox(width: 12),
-                      const Flexible(
-                        child: Text(
-                          'Sign in with Google',
-                          style: TextStyle(
-                            fontFamily: '.SF Pro Text',
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                
-              const SizedBox(height: 16),
-              
               Center(
                 child: InkWell(
                   onTap: () => _showSignUpDialog(context),

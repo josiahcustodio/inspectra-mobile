@@ -1,62 +1,8 @@
 import 'package:flutter/foundation.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
-import '../../core/supabase_config.dart';
 
 class AuthService {
   static GoTrueClient get _auth => Supabase.instance.client.auth;
-  static final GoogleSignIn _googleSignIn = GoogleSignIn(
-    // The WEB client id of the Google project Supabase's provider is
-    // configured with — passed as serverClientId so the idToken's audience
-    // is one Supabase accepts. See SupabaseConfig for the why.
-    serverClientId: kIsWeb ? null : SupabaseConfig.googleServerClientId,
-    clientId: kIsWeb ? SupabaseConfig.googleServerClientId : null,
-  );
-
-  /// Signs in the user with Google.
-  /// Returns true on success, false on failure (e.g. the user cancelled).
-  ///
-  /// No multi-factor exception path any more: Supabase always lands the
-  /// sign-in at AAL1, and AuthProvider decides from the session's assurance
-  /// level whether a TOTP challenge is still owed.
-  // [REF: AUTH_SIGNIN_GOOGLE]
-  static Future<bool> signInWithGoogle() async {
-    try {
-      if (kIsWeb) {
-        // Web redirect flow — the browser leaves and comes back signed in.
-        await _auth.signInWithOAuth(OAuthProvider.google);
-        return true;
-      } else {
-        final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-        if (googleUser == null) {
-          // User cancelled — not an error
-          return false;
-        }
-
-        final GoogleSignInAuthentication googleAuth =
-            await googleUser.authentication;
-        final idToken = googleAuth.idToken;
-        if (idToken == null) {
-          throw Exception(
-              'Google did not return an ID token. Check the serverClientId configuration.');
-        }
-
-        await _auth.signInWithIdToken(
-          provider: OAuthProvider.google,
-          idToken: idToken,
-          accessToken: googleAuth.accessToken,
-        );
-        return true;
-      }
-    } on AuthException catch (e) {
-      debugPrint('Google Sign-In AuthException: ${e.code} ${e.message}');
-      throw _friendlyAuthError(e);
-    } catch (e) {
-      debugPrint('Google Sign-In Error: $e');
-      throw Exception('Sign-in failed. Please try again.');
-    }
-  }
 
   // [REF: AUTH_SIGNIN_EMAIL]
   static Future<bool> signInWithEmailPassword(
@@ -142,10 +88,7 @@ class AuthService {
   }
 
   static Future<void> signOut() async {
-    await Future.wait([
-      _auth.signOut(),
-      _googleSignIn.signOut(),
-    ]);
+    await _auth.signOut();
   }
 
   static User? get currentUser => _auth.currentUser;
