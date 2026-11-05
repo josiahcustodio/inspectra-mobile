@@ -1,7 +1,7 @@
 name: clowtec_inspector
 description: A high-performance, offline-first mobile app for City Health Office inspectors
 publish_to: 'none'
-version: 1.0.0+3
+version: 1.0.0+4
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
