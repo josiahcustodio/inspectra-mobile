@@ -21,10 +21,8 @@ class Establishment extends HiveObject {
   @HiveField(4)
   final String ownerName;
 
-  // Fields 5–9 are no longer rendered anywhere on mobile, but they stay
-  // declared: they are already present in every inspector's Hive box, and a
-  // field number that stops being declared can never be safely reused for
-  // anything else afterwards.
+  // Field numbers are permanent: they are already in every inspector's Hive
+  // box, and one that stops being declared can never be safely reused.
   @HiveField(5)
   final int personnelCount;
 
@@ -61,6 +59,42 @@ class Establishment extends HiveObject {
   @HiveField(13)
   final String? qrCodeId;
 
+  // [REF: ESTABLISHMENT_MASTERLIST_FIELDS]
+  // Reference copies of the masterlist columns, shown on the inspection form
+  // so the inspector can verify they are at the right business. Nullable
+  // because records already in a Hive box lack them until the next sync.
+  @HiveField(14)
+  final String? businessPermitNo;
+
+  @HiveField(15)
+  final String? applicType;
+
+  @HiveField(16)
+  final String? permitDateIssued;
+
+  @HiveField(17)
+  final String? lineOfBusiness;
+
+  @HiveField(18)
+  final String? floorAreaSqm;
+
+  @HiveField(19)
+  final String? telNo;
+
+  @HiveField(20)
+  final String? tin;
+
+  // [REF: ESTABLISHMENT_COORDINATES]
+  // Set by the web admin (or a seed); null for every record without a pin.
+  // Read only by the field map (ui/screens/map_screen.dart).
+  @HiveField(21)
+  final double? latitude;
+
+  @HiveField(22)
+  final double? longitude;
+
+  bool get hasLocation => latitude != null && longitude != null;
+
   Establishment({
     String? id,
     required this.name,
@@ -76,6 +110,15 @@ class Establishment extends HiveObject {
     this.isSynced = true,
     this.createdAt,
     this.qrCodeId,
+    this.businessPermitNo,
+    this.applicType,
+    this.permitDateIssued,
+    this.lineOfBusiness,
+    this.floorAreaSqm,
+    this.telNo,
+    this.tin,
+    this.latitude,
+    this.longitude,
   }) : id = (id == null || id.isEmpty) ? const Uuid().v4() : id;
 
   String get formattedAddress {
@@ -138,6 +181,17 @@ class Establishment extends HiveObject {
       isSynced: json['is_synced'] == null ? true : (json['is_synced'] == 1 || json['is_synced'] == true),
       createdAt: json['created_at'] as String?,
       qrCodeId: json['qr_code_id'] as String?,
+      // toString, not a cast: floor_area_sqm is numeric, and a type surprise in
+      // a display-only column must not abort the whole sync.
+      businessPermitNo: json['business_permit_no']?.toString(),
+      applicType: json['applic_type']?.toString(),
+      permitDateIssued: json['permit_date_issued']?.toString(),
+      lineOfBusiness: json['line_of_business']?.toString(),
+      floorAreaSqm: json['floor_area_sqm']?.toString(),
+      telNo: json['tel_no']?.toString(),
+      tin: json['tin']?.toString(),
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
     );
   }
 

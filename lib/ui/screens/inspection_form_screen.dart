@@ -1,16 +1,11 @@
 import 'package:go_router/go_router.dart';
-import 'dart:io';
 import 'dart:convert';
-import 'dart:typed_data';
-import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../core/category_suggester.dart';
 import '../../core/rating_scale.dart';
+import '../../core/sanitary_order.dart';
 import '../../data/models/checklist_template.dart';
 import '../../data/models/establishment.dart';
 import '../../data/models/inspection_category.dart';
@@ -22,7 +17,7 @@ import '../../providers/rating_provider.dart';
 import '../widgets/category_picker.dart';
 import '../widgets/checklist_item_card.dart';
 import '../widgets/establishment_banner.dart';
-import '../widgets/signature_pad.dart';
+import '../widgets/establishment_details_card.dart';
 import '../../core/theme/app_colors.dart';
 
 class InspectionFormScreen extends StatefulWidget {
@@ -55,20 +50,32 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
   /// See [_onCategorySelected].
   int _pickerRevision = 0;
 
-  File? _evidenceImage;
-  final ImagePicker _picker = ImagePicker();
-
-  /// The saved sign-off PNG, if any. Held here as well as in the pad widget
-  /// because the body is swapped for a spinner while submitting, which
-  /// disposes the pad's State; this copy is what re-seeds it on the way back.
-  Uint8List? _signatureBytes;
-
-  /// Reaches into the pad at submit so an inspector who signed but never
-  /// tapped Save is not bounced — see SignaturePadWidgetState.exportIfDrawn.
-  final GlobalKey<SignaturePadWidgetState> _signatureKey =
-      GlobalKey<SignaturePadWidgetState>();
-
   final TextEditingController _remarksController = TextEditingController();
+
+  // [REF: SO_FORM_STATE]
+  // The Sanitary Order's own fields (CHO-ESD-FR-04). Only ever read when the
+  // inspection found at least one defect — see SanitaryOrder.isRequiredFor.
+  final TextEditingController _soNoController = TextEditingController();
+  final TextEditingController _timeGivenController = TextEditingController();
+  final TextEditingController _receivedByController = TextEditingController();
+  // [REF: PROPOSED_CONTACT]
+  // The establishment's contact address, asked on every inspection rather than
+  // only when an order is issued: this is the one moment anyone is standing in
+  // front of the person who knows it. It does not take effect until an admin
+  // approves it, so a typo cannot quietly mail a legal notice to a stranger.
+  final TextEditingController _pointPersonController = TextEditingController();
+  DateTime? _deadline;
+
+  // [REF: SO_ISSUE_TOGGLE]
+  /// Whether this inspection issues an order. Only ever consulted when the
+  /// checklist has at least one Fail: no demerits, no order, no question.
+  ///
+  /// Defaults ON because a demerit IS the trigger — the form's premise is
+  /// "the defects listed below are observed". The toggle is the escape hatch
+  /// for a defect handled with a verbal warning, not a decision the inspector
+  /// has to remember to make. Turning it off is visible on screen; forgetting
+  /// to turn it on would not be.
+  bool _issueOrder = true;
 
   bool _isSubmitting = false;
   bool _initialized = false;
@@ -79,6 +86,10 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
   @override
   void dispose() {
     _remarksController.dispose();
+    _soNoController.dispose();
+    _timeGivenController.dispose();
+    _receivedByController.dispose();
+    _pointPersonController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -247,32 +258,208 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
     ratingProvider.init(templates);
   }
 
-  // [REF: PHOTO_EVIDENCE_PICKER]
-  /// Captures one evidence photo and compresses it on the device before it ever
-  /// touches the network.
+  // [REF: SO_FORM_SECTION]
+  /// The Sanitary Order half of the form, shown only once the checklist has
+  /// at least one Fail.
   ///
-  /// A modern phone camera produces a 4–12 MB JPEG. Inspectors work on mobile
-  /// data in the field, and every one of those megabytes is paid for twice —
-  /// once on their connection, once in Storage egress. 1600px at 70%
-  /// quality is still far more detail than a sanitary deficiency photo needs
-  /// and typically lands around 200–400 KB, a 10–20x reduction.
-  ///
-  /// image_picker does this resize/re-encode natively on the platform side, so
-  /// there is no extra Dart package and no main-thread cost.
-  Future<void> _pickImage() async {
-    final pickedFile = await _picker.pickImage(
-      source: ImageSource.camera,
-      maxWidth: 1600,
-      imageQuality: 70,
+  /// Hidden rather than disabled when there is nothing to order: the fields
+  /// below are the operative part of a legal notice, and an inspector who
+  /// found no defects should never be looking at a deadline field at all.
+  /// The defect table itself is not re-entered here — it is already captured
+  /// per item on the checklist above, which is where the inspector was
+  /// standing when they saw it.
+  Widget _buildSanitaryOrderSection(RatingProvider provider) {
+    final defectCount = provider.answers.values
+        .where((a) => a == SanitaryOrder.failAnswer)
+        .length;
+    if (defectCount == 0) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 32, thickness: 2),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.gavel_rounded,
+                      size: 20, color: AppColors.fail),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Sanitary Order',
+                        style:
+                            Theme.of(context).textTheme.titleLarge?.copyWith(
+                                  fontFamily: '.SF Pro Display',
+                                  fontWeight: FontWeight.w700,
+                                )),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '$defectCount defect${defectCount == 1 ? '' : 's'} observed.',
+                style: const TextStyle(
+                  fontFamily: '.SF Pro Text',
+                  fontSize: 13,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile.adaptive(
+                value: _issueOrder,
+                onChanged: (v) => setState(() => _issueOrder = v),
+                contentPadding: EdgeInsets.zero,
+                title: const Text(
+                  'Issue a Sanitary Order',
+                  style: TextStyle(
+                    fontFamily: '.SF Pro Text',
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textDisplay,
+                  ),
+                ),
+                subtitle: Text(
+                  _issueOrder
+                      ? 'Enter the name of the owner or point person below.'
+                      : 'No order will be issued for these defects.',
+                  style: const TextStyle(
+                    fontFamily: '.SF Pro Text',
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+              // Collapsed rather than disabled when no order is being issued:
+              // these are the operative fields of a legal notice and have no
+              // meaning without one.
+              if (!_issueOrder) const SizedBox.shrink(),
+              if (_issueOrder) ...[
+              const SizedBox(height: 8),
+              _buildOrderField(
+                controller: _soNoController,
+                label: 'Sanitary Order No. (optional)',
+                hint: 'From the CHO booklet — leave blank if unknown',
+                icon: Icons.numbers_rounded,
+              ),
+              const SizedBox(height: 12),
+              _buildOrderField(
+                controller: _timeGivenController,
+                label: 'Time given for correction',
+                hint: 'e.g. 7 days',
+                icon: Icons.timelapse_rounded,
+              ),
+              const SizedBox(height: 12),
+              // A picker, not a text field: the deadline is the date a
+              // re-inspection becomes due, and a typo in a hand-typed date
+              // moves a legal deadline.
+              InkWell(
+                onTap: _pickDeadline,
+                borderRadius: BorderRadius.circular(16),
+                child: InputDecorator(
+                  decoration: _orderDecoration(
+                    label: 'Deadline',
+                    hint: '',
+                    icon: Icons.event_rounded,
+                  ),
+                  child: Text(
+                    _deadline == null
+                        ? 'Tap to choose a date'
+                        : SanitaryOrder.toDateOnly(_deadline!),
+                    style: TextStyle(
+                      fontFamily: '.SF Pro Text',
+                      fontSize: 15,
+                      color: _deadline == null
+                          ? Colors.black38
+                          : AppColors.textDisplay,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _buildOrderField(
+                controller: _receivedByController,
+                label: 'Received by',
+                hint: 'Name of the owner or point person',
+                icon: Icons.person_outline_rounded,
+              ),
+              ],
+            ],
+          ),
+        ),
+      ],
     );
-    if (pickedFile != null) {
-      setState(() {
-        _evidenceImage = File(pickedFile.path);
-      });
-    }
   }
 
-  // [REF: INSPECTION_SUBMIT]
+  InputDecoration _orderDecoration({
+    required String label,
+    required String hint,
+    required IconData icon,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(
+          fontFamily: '.SF Pro Text', color: AppColors.textSecondary),
+      hintText: hint,
+      hintStyle:
+          const TextStyle(color: Colors.black38, fontFamily: '.SF Pro Text'),
+      prefixIcon: Icon(icon, color: Colors.black38),
+      filled: true,
+      fillColor: AppColors.background,
+      contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: AppColors.border),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: AppColors.border),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(
+          color: Theme.of(context).colorScheme.primary,
+          width: 1.5,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOrderField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    TextInputType? keyboardType,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      style: const TextStyle(
+        fontFamily: '.SF Pro Text',
+        fontSize: 15,
+        color: AppColors.textDisplay,
+      ),
+      decoration: _orderDecoration(label: label, hint: hint, icon: icon),
+    );
+  }
+
+  Future<void> _pickDeadline() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _deadline ?? now.add(const Duration(days: 7)),
+      // Not before today: a deadline already past cannot be complied with,
+      // and the form promises a re-inspection "after the lapse of the time
+      // given".
+      firstDate: DateTime(now.year, now.month, now.day),
+      lastDate: now.add(const Duration(days: 365)),
+    );
+    if (picked != null) setState(() => _deadline = picked);
+  }
+
   Future<void> _submitForm() async {
     // Re-entrance defence on top of the disabled button: the button's
     // onPressed gate only takes effect after a setState has rebuilt it, so
@@ -362,33 +549,78 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
       return;
     }
 
-    // The flag goes up BEFORE the first await in this method. The signature
-    // export below genuinely yields to the event loop, and the submit button
-    // is still enabled until a setState lands — so flipping the flag any
-    // later leaves a window where a double-tap runs two interleaved
-    // _submitForm calls, each minting its own UUID and writing its own
-    // inspection_logs document. Every return path from here on must clear
-    // the flag.
-    setState(() {
-      _isSubmitting = true;
-    });
+    // Here as well as in firstBlocker, which stops at "no defects": the address
+    // is now recorded on inspections that issue no order.
+    final emailBlocker = SanitaryOrder.emailBlocker(_pointPersonController.text);
+    if (emailBlocker != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(emailBlocker)),
+      );
+      return;
+    }
 
-    // [REF: SIGNATURE_SUBMIT_GUARD]
-    // Last in the ladder, after completeness: the sign-off is what makes the
-    // record official (it replaces the wet-ink SSSR column of the paper
-    // masterlist), so it is required — and requiring it does not violate D9,
-    // because capture is fully offline. Asking the pad rather than reading
-    // `_signatureBytes` alone is deliberate: the Save button is a preview
-    // convenience, and an inspector who signed without tapping it has still
-    // signed.
-    final signatureBytes =
-        _signatureBytes ?? await _signatureKey.currentState?.exportIfDrawn();
-    if (!mounted) return;
-    if (signatureBytes == null) {
+    // [REF: SO_DEFECT_SOURCE]
+    // Built before the submit flag so the Sanitary Order is validated against
+    // the EXACT rows that will be stored — the order's defect table is
+    // derived from `results`, and deriving it twice from two sources is how
+    // a validated order and a written one drift apart.
+    final List<Map<String, dynamic>> resultsArray = [];
+    for (final entry in ratingProvider.answers.entries) {
+      final itemId = entry.key;
+      final answer = entry.value;
+
+      ChecklistTemplate? template;
+      try {
+        template = _templates.firstWhere((t) => t.id == itemId);
+      } catch (_) {
+        template = null;
+      }
+
+      resultsArray.add({
+        'checklist_item_id': itemId,
+        'item_name': template?.item ?? itemId,
+        'sub_category': template?.subCategory ?? '',
+        'weight': template?.weight ?? 0,
+        'answer': answer,
+        'note': ratingProvider.itemNotes[itemId] ?? '',
+        // The right-hand column of the order's table. Written for every row,
+        // not just failures: an empty string on a Pass reads the same as the
+        // blank it is, and a conditional key would make every consumer test
+        // for its presence.
+        'correction': ratingProvider.itemCorrections[itemId] ?? '',
+        // The item's extra inputs, keyed by field label so the row reads
+        // without the template (see ChecklistField). Empty on plain items.
+        'values': ratingProvider.itemValues[itemId] ?? const {},
+      });
+    }
+
+    // Demerits make an order POSSIBLE; the toggle decides whether one is
+    // actually issued. Both have to hold.
+    final defects = SanitaryOrder.defectsFrom(resultsArray);
+    final issuesOrder = defects.isNotEmpty && _issueOrder;
+
+    // Claimed before the first await so a double-tap cannot mint two rows;
+    // the guard at the top of this method reads the same flag.
+    setState(() => _isSubmitting = true);
+
+    // One call, one rule: everything that makes the order issuable lives in
+    // SanitaryOrder.firstBlocker, so the screen cannot enforce a different
+    // document than the module describes.
+    // An empty defect list when no order is being issued, so the per-defect
+    // note and correction are required by the ORDER rather than in general.
+    // Nothing enforced them before this change, and a withheld order should
+    // not start enforcing them now.
+    final blocker = SanitaryOrder.firstBlocker(
+      defects: issuesOrder ? defects : const [],
+      timeGiven: _timeGivenController.text,
+      deadline: _deadline,
+      receivedByName: _receivedByController.text,
+      pointPersonEmail: _pointPersonController.text,
+    );
+    if (blocker != null) {
       setState(() => _isSubmitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Please add your signature before submitting.')),
+        SnackBar(content: Text(blocker)),
       );
       return;
     }
@@ -409,113 +641,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
       }
     }
 
-    // Try to upload the evidence photo now. If this fails (offline, or the
-    // upload itself errors) photoUrl stays null and we keep the on-device path
-    // instead — SyncService retries the upload when the queued inspection
-    // syncs, so the photo is no longer silently lost.
-    String? photoUrl;
-    if (_evidenceImage != null) {
-      photoUrl = await SyncService.uploadImage(
-        _evidenceImage!,
-        SyncService.evidencePath(widget.establishment.id),
-        'image/jpeg',
-      );
-    }
-
-    // [REF: SIGNATURE_STAGING]
-    // The log id is minted HERE instead of inside the InspectionLog
-    // constructor, because the signature's Storage path is deterministic —
-    // signatures/{estId}/{logId}.png, so retries overwrite themselves — and
-    // a deterministic path needs the id before the log object exists. The
-    // constructor still accepts it; nothing else about id handling changes.
-    final logId = const Uuid().v4();
-
-    // Written to the app documents dir, not image_picker's temp cache: this
-    // file may have to survive days of airplane mode in the queue, and the
-    // OS reclaims temp space without asking. The hash is computed from the
-    // in-memory bytes before anything touches disk or network, so whichever
-    // upload path carries the image, what lands in the database attests to
-    // exactly what the inspector saw on the pad.
-    String? signatureUrl;
-    String? localSignaturePath;
-    final String signatureSha256 = sha256.convert(signatureBytes).toString();
-    try {
-      final docsDir = await getApplicationDocumentsDirectory();
-      final sigDir = Directory('${docsDir.path}/signatures');
-      if (!sigDir.existsSync()) sigDir.createSync(recursive: true);
-      final sigFile = File('${sigDir.path}/$logId.png');
-      await sigFile.writeAsBytes(signatureBytes, flush: true);
-
-      // Try-now, same as the photo above: on failure the on-device path is
-      // staged instead and SyncService retries when the queue drains.
-      signatureUrl = await SyncService.uploadImage(
-        sigFile,
-        SyncService.signaturePath(widget.establishment.id, logId),
-        'image/png',
-      );
-      if (signatureUrl == null) {
-        localSignaturePath = sigFile.path;
-      } else {
-        // Uploaded on the spot — the staged copy has served its purpose, and
-        // nothing else ever cleans this directory.
-        try {
-          sigFile.deleteSync();
-        } catch (_) {}
-      }
-    } catch (e) {
-      // Disk staging failed (full storage, denied dir) — but the signed
-      // bytes are still in memory, so unlike SyncService's missing-file
-      // forgiveness there IS something a direct upload can carry. Try the
-      // network before giving anything up.
-      debugPrint('Could not stage signature, trying direct upload: $e');
-      signatureUrl = await SyncService.uploadSignatureBytes(
-        signatureBytes,
-        SyncService.signaturePath(widget.establishment.id, logId),
-      );
-      if (signatureUrl == null) {
-        // Offline AND the device cannot stage a file — the one state with
-        // no route to an eventual upload. The record does not proceed
-        // unsigned: "required to submit" would mean nothing if it waived
-        // itself exactly when the signature is hardest to reproduce later.
-        // This does not violate D9 — the inspector is blocked by their own
-        // device's storage failure, named in the message with an action to
-        // take, not by missing signal; the normal dead-zone path (stage,
-        // queue, sync later) is untouched above.
-        if (mounted) {
-          setState(() => _isSubmitting = false);
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Could not save your signature (device storage '
-                  'failed). Free up space and try again.')));
-        }
-        return;
-      }
-    }
-
-    final List<Map<String, dynamic>> resultsArray = [];
-    for (final entry in ratingProvider.answers.entries) {
-      final itemId = entry.key;
-      final answer = entry.value;
-
-      ChecklistTemplate? template;
-      try {
-        template = _templates.firstWhere((t) => t.id == itemId);
-      } catch (_) {
-        template = null;
-      }
-
-      resultsArray.add({
-        'checklist_item_id': itemId,
-        'item_name': template?.item ?? itemId,
-        'sub_category': template?.subCategory ?? '',
-        'weight': template?.weight ?? 0,
-        'answer': answer,
-        'note': ratingProvider.itemNotes[itemId] ?? '',
-      });
-    }
-
     final log = InspectionLog(
-      // The id minted above for the signature path — see [REF: SIGNATURE_STAGING].
-      id: logId,
       establishmentId: widget.establishment.id,
       establishmentName: widget.establishment.name, // saved on the log row so any phone can display it
       // D24 — the id is the machine key, the name is the human record of which
@@ -529,38 +655,36 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
       totalDemerits: ratingProvider.totalDemerits,
       percentageRating: (ratingProvider.score ?? 0).toDouble(),
       remarks: finalRemarks,
-      photoEvidenceUrl: photoUrl,
-      // Only stage the local path when the upload did not already succeed.
-      localPhotoPath:
-          (photoUrl == null && _evidenceImage != null) ? _evidenceImage!.path : null,
-      signatureUrl: signatureUrl,
-      signatureSha256: signatureSha256,
-      localSignaturePath: localSignaturePath,
+      // The order, when there was one to issue. soIssuedAt is the marker the
+      // rest of the system reads — the number may legitimately stay blank
+      // until CHO's booklet pattern is known.
+      soIssuedAt: issuesOrder ? DateTime.now().toUtc().toIso8601String() : null,
+      soNo: issuesOrder
+          ? SanitaryOrder.normalizeOrderNo(_soNoController.text)
+          : null,
+      timeGiven: issuesOrder ? _timeGivenController.text.trim() : null,
+      deadline: issuesOrder && _deadline != null
+          ? SanitaryOrder.toDateOnly(_deadline!)
+          : null,
+      receivedByName:
+          issuesOrder ? _receivedByController.text.trim() : null,
+      // A proposal, not a setting: an admin approves it before it becomes the
+      // establishment's address of record.
+      proposedPointPersonName:
+          issuesOrder ? (_receivedByController.text.trim().isEmpty
+              ? null
+              : _receivedByController.text.trim()) : null,
+      proposedPointPersonEmail:
+          SanitaryOrder.normalizeEmail(_pointPersonController.text),
       results: resultsArray,
     );
 
     final success = await SyncService.submitInspectionLog(log);
 
-    // Results are embedded in log.toJson() directly.
-
-    // A photo that was captured but not uploaded still counts as unfinished
-    // work, even when the database write itself succeeded (Storage can fail
-    // while the database is reachable). Re-queueing is safe and cheap: the sync
-    // pass writes to the same document id with merge:true, so the retry
-    // uploads the photo and patches the URL in without duplicating anything.
-    final photoStillPending = _evidenceImage != null && photoUrl == null;
-
-    // Same shape as the photo: a staged file exists on this device and has
-    // no URL yet, so the record is not finished until the queue drains.
-    // (This is the only unsigned-in-database state that can reach here —
-    // a staging failure above either uploaded directly or blocked the
-    // submit, so there is always either a URL or a staged file by now.)
-    final signatureStillPending = localSignaturePath != null;
-
     // Guarded: a system-back pop while the submit spinner is up disposes
     // this State mid-await, and setState after dispose throws. The queue
     // write below must still run either way — the inspection is already
-    // scored and signed, and losing it to a navigation gesture would be far
+    // scored, and losing it to a navigation gesture would be far
     // worse than a stale flag on a dead State.
     if (mounted) {
       setState(() {
@@ -568,7 +692,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
       });
     }
 
-    if (success && !photoStillPending && !signatureStillPending) {
+    if (success) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Submitted Successfully!')));
@@ -577,17 +701,13 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
       return;
     }
 
-    // Save to the offline queue. toQueueJson keeps the on-device photo and
-    // signature paths so both survive until they can be uploaded.
-    final jsonStr = jsonEncode(log.toQueueJson());
+    final jsonStr = jsonEncode(log.toJson());
     await OfflineService.inspectionsQueueBox.put(log.id, jsonStr);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(success
-              ? 'Submitted. Attachments will upload when you have signal.'
-              : 'Saved offline. Will sync later.'),
+        const SnackBar(
+          content: Text('Saved offline. Will sync later.'),
         ),
       );
       context.pop(); // Go back home even if offline
@@ -880,6 +1000,36 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
                       children: [
                         const SizedBox(height: 16), // Padding before checklist starts
 
+                        EstablishmentDetailsCard(
+                          establishment: widget.establishment,
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildOrderField(
+                                controller: _pointPersonController,
+                                label: 'Owner / point person email (optional)',
+                                hint: 'name@gmail.com',
+                                icon: Icons.alternate_email_rounded,
+                                keyboardType: TextInputType.emailAddress,
+                              ),
+                              const SizedBox(height: 6),
+                              const Text(
+                                'An administrator reviews this before any copy '
+                                'is sent or any access is granted.',
+                                style: TextStyle(
+                                  fontFamily: '.SF Pro Text',
+                                  fontSize: 11,
+                                  height: 1.4,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
                         // [REF: CATEGORY_PICKER_PLACEMENT]
                         // Inside the scroll view, not in the pinned Column
                         // above. [REF: BANNER_KEYBOARD_YIELD] already has the
@@ -960,99 +1110,11 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
                       ],
                     ),
                   ),
-                  const Divider(height: 32, thickness: 2),
-
-                  // Photo Evidence section
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Photo Evidence',
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                  fontFamily: '.SF Pro Display',
-                                  fontWeight: FontWeight.w700,
-                                )),
-                        const SizedBox(height: 12),
-                        GestureDetector(
-                          onTap: _pickImage,
-                          child: Container(
-                            width: double.infinity,
-                            height: 160,
-                            decoration: BoxDecoration(
-                              color: AppColors.background,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: AppColors.borderStrong,
-                                width: 2,
-                                // Note: For dashed lines, we're using a solid subtle border here
-                                // to avoid extra dependencies, but keeping it light and soft.
-                              ),
-                            ),
-                            child: _evidenceImage != null
-                                ? ClipRRect(
-                                    borderRadius: BorderRadius.circular(14),
-                                    child: Image.file(_evidenceImage!, fit: BoxFit.cover),
-                                  )
-                                : Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.all(12),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white,
-                                          shape: BoxShape.circle,
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: Colors.black.withAlpha(10),
-                                              blurRadius: 8,
-                                              offset: const Offset(0, 2),
-                                            ),
-                                          ],
-                                        ),
-                                        child: Icon(Icons.camera_alt_outlined, 
-                                            size: 32, 
-                                            color: Theme.of(context).colorScheme.primary),
-                                      ),
-                                      const SizedBox(height: 12),
-                                      const Text(
-                                        'Tap to capture evidence',
-                                        style: TextStyle(
-                                          fontFamily: '.SF Pro Text',
-                                          color: AppColors.textSecondary,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 32, thickness: 2),
-
-                  // [REF: SIGNATURE_CAPTURE]
-                  // Next to the photo evidence because it is the same kind of
-                  // thing — an attachment captured in the field that syncs
-                  // with the record — but unlike the photo it is required:
-                  // this is the sign-off that replaces the wet-ink
-                  // SSSR/Signature column of the paper masterlist, and an
-                  // unsigned paper form would not have been accepted either.
-                  // The guard lives in _submitForm with the others.
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: SignaturePadWidget(
-                      key: _signatureKey,
-                      title: "Inspector's Signature",
-                      // Re-seeds the pad after the submit spinner replaced the
-                      // body and disposed its State — otherwise a failed
-                      // submit would show an empty pad over a form that still
-                      // held, and would still upload, the old bytes.
-                      initialBytes: _signatureBytes,
-                      onSaved: (bytes) =>
-                          setState(() => _signatureBytes = bytes),
-                    ),
+                  // A Consumer of its own so answering the last checklist item
+                  // reveals the section without rebuilding the whole form.
+                  Consumer<RatingProvider>(
+                    builder: (context, provider, _) =>
+                        _buildSanitaryOrderSection(provider),
                   ),
                   const SizedBox(height: 48), // Padding before bottom nav
                 ],

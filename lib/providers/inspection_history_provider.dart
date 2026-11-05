@@ -23,7 +23,22 @@ class InspectionHistoryProvider extends ChangeNotifier {
   }
 
   // [REF: HISTORY_MERGE_LOCAL_REMOTE]
-  Future<void> fetchHistory({int limit = 50}) async {
+  /// [includeLocalQueue] MUST be false for an establishment owner.
+  ///
+  /// The remote half of this merge is scoped by RLS, so the server can only
+  /// ever hand an owner their own establishments' logs. The local half is not:
+  /// `inspectionsQueueBox` is a device-global Hive box holding whatever the
+  /// inspector using this phone has not synced yet. Merging it into an owner's
+  /// list would show them another establishment's inspection — its score, its
+  /// defects, its remarks — with no server involved to say no.
+  ///
+  /// Reachable the first time an inspector hands their phone to an owner to
+  /// look something up, which is exactly the situation the owner view exists
+  /// for.
+  Future<void> fetchHistory({
+    int limit = 50,
+    bool includeLocalQueue = true,
+  }) async {
     if (_isLoading) return;
     _isLoading = true;
     _error = null;
@@ -38,18 +53,22 @@ class InspectionHistoryProvider extends ChangeNotifier {
         _error = 'Showing offline and cached logs only.';
       }
 
-      final localLogs = OfflineService.inspectionsQueueBox.values.map((jsonString) {
-        final Map<String, dynamic> data = jsonDecode(jsonString);
-        final log = InspectionLog.fromJson(data);
+      final localLogs = !includeLocalQueue
+          ? <Map<String, dynamic>>[]
+          : OfflineService.inspectionsQueueBox.values.map((jsonString) {
+              final Map<String, dynamic> data = jsonDecode(jsonString);
+              final log = InspectionLog.fromJson(data);
 
-        // Use the saved name if present (new records include it),
-        // otherwise fall back to local Hive cache lookup.
-        if (data['establishment_name'] == null || (data['establishment_name'] as String).isEmpty) {
-          final est = OfflineService.getEstablishmentById(log.establishmentId);
-          data['establishment_name'] = est?.name ?? 'Unknown';
-        }
-        return data;
-      }).toList();
+              // Use the saved name if present (new records include it),
+              // otherwise fall back to local Hive cache lookup.
+              if (data['establishment_name'] == null ||
+                  (data['establishment_name'] as String).isEmpty) {
+                final est =
+                    OfflineService.getEstablishmentById(log.establishmentId);
+                data['establishment_name'] = est?.name ?? 'Unknown';
+              }
+              return data;
+            }).toList();
 
       final combinedRaw = [...localLogs, ...rawRemote];
 
@@ -61,7 +80,7 @@ class InspectionHistoryProvider extends ChangeNotifier {
           seenIds.add(id);
           uniqueRaw.add(logData);
         } else if (id == null) {
-           uniqueRaw.add(logData);
+          uniqueRaw.add(logData);
         }
       }
 
@@ -87,4 +106,9 @@ class InspectionHistoryProvider extends ChangeNotifier {
   }
 
   Future<void> refresh() => fetchHistory();
+
+  /// The owner-safe fetch: server rows only, so nothing another inspector
+  /// staged on this device can reach an owner's screen.
+  Future<void> fetchOwnerHistory({int limit = 50}) =>
+      fetchHistory(limit: limit, includeLocalQueue: false);
 }

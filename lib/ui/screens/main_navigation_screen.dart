@@ -106,7 +106,7 @@ class _BottomNav extends StatelessWidget {
                   _buildTab(1, Icons.business_outlined, Icons.business_rounded, 'Establishments'),
                   const SizedBox(width: 48), // Space for FAB
                   _buildTab(2, Icons.history_outlined, Icons.history_rounded, 'History'),
-                  _buildTab(3, Icons.person_outline, Icons.person, 'Profile'),
+                  _buildTab(3, Icons.map_outlined, Icons.map_rounded, 'Map'),
                 ],
               ),
             ),

@@ -9,11 +9,14 @@ import '../../ui/screens/qr_scanner_screen.dart';
 import '../../ui/screens/mfa_enroll_screen.dart';
 import '../../ui/screens/mfa_verify_screen.dart';
 import '../../ui/screens/verify_email_screen.dart';
+import '../../ui/screens/owner_home_screen.dart';
+import '../../ui/screens/pending_approval_screen.dart';
 
 import '../../ui/screens/inspection_form_screen.dart';
 import '../../ui/screens/inspection_details_screen.dart';
 import '../../ui/screens/home_screen.dart';
 import '../../ui/screens/establishments_screen.dart';
+import '../../ui/screens/map_screen.dart';
 import '../../ui/screens/history_screen.dart';
 import '../../ui/screens/profile_screen.dart';
 import '../../data/models/establishment.dart';
@@ -23,7 +26,7 @@ final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>(de
 final GlobalKey<NavigatorState> _shellNavigatorHomeKey = GlobalKey<NavigatorState>(debugLabel: 'shellHome');
 final GlobalKey<NavigatorState> _shellNavigatorEstablishmentsKey = GlobalKey<NavigatorState>(debugLabel: 'shellEst');
 final GlobalKey<NavigatorState> _shellNavigatorHistoryKey = GlobalKey<NavigatorState>(debugLabel: 'shellHist');
-final GlobalKey<NavigatorState> _shellNavigatorProfileKey = GlobalKey<NavigatorState>(debugLabel: 'shellProf');
+final GlobalKey<NavigatorState> _shellNavigatorMapKey = GlobalKey<NavigatorState>(debugLabel: 'shellMap');
 
 GoRouter createAppRouter(AuthProvider authProvider) {
   return GoRouter(
@@ -38,6 +41,8 @@ GoRouter createAppRouter(AuthProvider authProvider) {
       final bool isGoingToMfaVerify = loc == '/mfa-verify';
       final bool isGoingToMfaEnroll = loc == '/mfa-enroll';
       final bool isGoingToVerifyEmail = loc == '/verify-email';
+      final bool isGoingToPending = loc == '/pending-approval';
+      final bool isGoingToOwner = loc.startsWith('/my');
 
       // Unauthenticated: only /login is reachable. (Under Supabase there is
       // no pre-session MFA state — the Firebase resolver limbo is gone; a
@@ -46,6 +51,57 @@ GoRouter createAppRouter(AuthProvider authProvider) {
         if (!isGoingToLogin) return '/login';
         return null;
       }
+
+      // [REF: ROLE_ROUTE_BRANCH]
+      // Role first, before every gate below it. Two of those gates are wrong
+      // for anyone who is not an inspector:
+      //
+      //  * requiresMfaEnrollment forces TOTP enrollment with no way around it.
+      //    An establishment owner is not going to install an authenticator app
+      //    to read their sanitary order, and RLS does not need them to:
+      //    mfa_satisfied() passes a factor-less account at AAL1.
+      //  * /sync runs OfflineService.syncData(), which downloads the
+      //    establishment and checklist caches. An owner's RLS returns nothing
+      //    from those tables, and the Hive boxes are device-global, so running
+      //    it under an owner session used to empty the cache of whichever
+      //    inspector shares the phone. (Guarded at the source now too — see
+      //    [REF: EMPTY_SNAPSHOT_GUARD] — but an owner has no use for a sync
+      //    either way.)
+      //
+      // An unresolved role is pinned to /sync rather than guessed. Guessing
+      // "inspector" marches an owner into MFA enrollment; guessing "owner"
+      // hides an inspector's own work from them. The splash resolves the role
+      // before it does anything else and then routes.
+      if (authProvider.roleUnknown) {
+        // RLS hides the profiles row until AAL2, so on a fresh install the
+        // role cannot resolve before the code is presented. Waiting on /sync
+        // here would never end.
+        if (authProvider.mfaChallengePending) {
+          return isGoingToMfaVerify ? null : '/mfa-verify';
+        }
+        return loc == '/sync' ? null : '/sync';
+      }
+
+      // A new account nobody has activated. Every policy denies 'pending', so
+      // there is no screen in the app with anything on it for this session —
+      // see PendingApprovalScreen for why it gets told so explicitly.
+      if (authProvider.isPendingApproval) {
+        return isGoingToPending ? null : '/pending-approval';
+      }
+      if (isGoingToPending) return '/sync';
+
+      // Owners: read-only, no sync, no MFA enrollment, nothing under the
+      // inspector shell. Checked before the MFA gates, which is the point.
+      if (authProvider.isOwner) {
+        // /inspection/details/:id is shared with inspectors; RLS decides what
+        // a given session can actually read, so there is nothing to duplicate.
+        if (isGoingToOwner || loc.startsWith('/inspection/details/')) {
+          return null;
+        }
+        return '/my/inspections';
+      }
+      // A non-owner who somehow landed on an owner route.
+      if (isGoingToOwner) return '/sync';
 
       // Signed in at AAL1 with a TOTP factor enrolled: the second factor is
       // still owed. Pin to /mfa-verify — data access is blocked server-side
@@ -118,9 +174,30 @@ GoRouter createAppRouter(AuthProvider authProvider) {
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const QRScannerScreen(),
       ),
+      GoRoute(
+        path: '/pending-approval',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const PendingApprovalScreen(),
+      ),
+      // Outside the StatefulShellRoute on purpose: the four-tab inspector
+      // shell (Home / Establishments / History / Map) has nothing an
+      // owner is allowed to open, so they get a single screen rather than a
+      // shell with three dead branches.
+      GoRoute(
+        path: '/my/inspections',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const OwnerHomeScreen(),
+      ),
       // No /establishments/add or /establishments/edit route: the web admin is
       // the sole owner of establishment data, so there is nowhere on mobile to
       // navigate for a create or an edit.
+      // Profile left the bottom bar for the Map tab; it opens from the avatar
+      // at the top right of Home.
+      GoRoute(
+        path: '/profile',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const ProfileScreen(),
+      ),
       GoRoute(
         path: '/inspection',
         parentNavigatorKey: _rootNavigatorKey,
@@ -176,11 +253,11 @@ GoRouter createAppRouter(AuthProvider authProvider) {
             ],
           ),
           StatefulShellBranch(
-            navigatorKey: _shellNavigatorProfileKey,
+            navigatorKey: _shellNavigatorMapKey,
             routes: <RouteBase>[
               GoRoute(
-                path: '/profile',
-                builder: (context, state) => const ProfileScreen(),
+                path: '/map',
+                builder: (context, state) => const MapScreen(),
               ),
             ],
           ),

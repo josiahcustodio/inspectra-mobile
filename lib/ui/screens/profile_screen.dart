@@ -109,6 +109,47 @@ class ProfileScreen extends StatelessWidget {
   }
 
   // ─── My Account Dialog ──────────────────────────────────────────────────────
+  Future<void> _editFullName(BuildContext context) async {
+    final controller =
+        TextEditingController(text: AuthService.displayName ?? '');
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Full name'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(hintText: 'e.g. Juan M. Dela Cruz'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.trim().isEmpty || !context.mounted) return;
+    try {
+      await AuthService.updateDisplayName(name);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Name updated.')));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not update name. Try again.')));
+      }
+    }
+  }
+
   void _showMyAccount(BuildContext context) {
     final user = AuthService.currentUser;
     final name = AuthService.displayName ?? 'Inspector';
@@ -284,11 +325,13 @@ class ProfileScreen extends StatelessWidget {
     final photoUrl = AuthService.photoUrl;
 
     return Scaffold(
+      // Pushed over the tabs (not a tab itself), so the bar supplies the back arrow.
+      appBar: AppBar(title: const Text('Profile'), backgroundColor: Colors.transparent, elevation: 0),
       body: SafeArea(
         child: SingleChildScrollView(
           child: Column(
             children: [
-              const SizedBox(height: 40),
+              const SizedBox(height: 16),
               CircleAvatar(
                 radius: 48,
                 backgroundColor: primary.withValues(alpha: 0.15),
@@ -312,6 +355,12 @@ class ProfileScreen extends StatelessWidget {
                 icon: Icons.badge_outlined,
                 label: 'My Account',
                 onTap: () => _showMyAccount(context),
+              ),
+              _ProfileTile(
+                icon: Icons.drive_file_rename_outline_rounded,
+                label: 'Full name',
+                subtitle: 'Printed on inspections and Sanitary Orders',
+                onTap: () => _editFullName(context),
               ),
               _ProfileTile(
                 icon: Icons.security_rounded,

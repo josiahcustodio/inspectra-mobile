@@ -1,7 +1,9 @@
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../data/services/offline_service.dart';
 import '../../core/theme/app_colors.dart';
+import '../../providers/auth_provider.dart';
 
 class SplashSyncScreen extends StatefulWidget {
   const SplashSyncScreen({super.key});
@@ -13,6 +15,10 @@ class SplashSyncScreen extends StatefulWidget {
 class _SplashSyncScreenState extends State<SplashSyncScreen> {
   String _statusMessage = 'Initializing Offline Database...';
 
+  /// Owners see no inspector copy on this screen, and no sync status, because
+  /// neither applies to them.
+  bool _isOwner = false;
+
   @override
   void initState() {
     super.initState();
@@ -21,6 +27,50 @@ class _SplashSyncScreenState extends State<SplashSyncScreen> {
 
   // [REF: STARTUP_SYNC]
   Future<void> _initializeApp() async {
+    // [REF: ROLE_ROUTE_BRANCH]
+    // The role is resolved HERE, before anything else happens, because the
+    // whole shape of startup depends on it — and because the router pins an
+    // unresolved role to this screen, making it the one place that can settle
+    // the question without flashing a destination first.
+    final auth = context.read<AuthProvider>();
+    final role = await auth.ensureRole();
+    if (!mounted) return;
+
+    if (role == 'owner') {
+      setState(() {
+        _isOwner = true;
+        _statusMessage = 'Loading your inspection records...';
+      });
+      // No syncData(): the establishment and checklist caches it fills are
+      // inspector tooling an owner has no access to and no use for.
+      context.go('/my/inspections');
+      return;
+    }
+
+    // Not routed here — the router's own guard sends a pending account to its
+    // screen as soon as the role resolves, and it has already run by now.
+    // Falling through to a sync for a role that can read nothing would just
+    // log three permission-shaped empty results.
+    if (role == 'pending') return;
+
+    // [REF: ROLE_UNKNOWN_DEADLOCK]
+    // Still unknown after ensureRole() AND after its cached fallback: this
+    // device has never successfully read a role for this account and cannot
+    // reach the network now. Stop here rather than syncing and calling
+    // context.go('/home') — the router pins an unknown role back to /sync, so
+    // that call rebuilt this screen and ran initState again, forever.
+    //
+    // The message is the exit: the account has to be online once, and saying
+    // so beats a spinner that never resolves.
+    if (role == null) {
+      setState(() {
+        _statusMessage =
+            'Could not confirm your account. Connect to the internet once, '
+            'then reopen the app.';
+      });
+      return;
+    }
+
     try {
       setState(() {
         _statusMessage = 'Syncing templates and establishments...';
@@ -71,10 +121,12 @@ class _SplashSyncScreenState extends State<SplashSyncScreen> {
                 color: Colors.white,
               ),
               const SizedBox(height: 24),
-              const Text(
-                'City Health Office\nInspector Portal',
+              Text(
+                _isOwner
+                    ? 'City Health Office\nInspection Records'
+                    : 'City Health Office\nInspector Portal',
                 textAlign: TextAlign.center,
-                style: TextStyle(
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 28,
                   fontWeight: FontWeight.bold,

@@ -29,34 +29,61 @@ class InspectionLog {
 
   final String inspectorName;
   final int totalDemerits;
-  final double percentageRating;
+
+  // [REF: UNSCORED_IS_NOT_ZERO]
+  /// Null means the inspection was never scored — NOT a score of zero.
+  ///
+  /// fromJson used to coerce a missing `percentage_rating` to 0.0, which is
+  /// the worst available guess: 0% is the bottom of the lowest band, so an
+  /// unscored record rendered as a red failing grade nobody ever recorded.
+  /// RatingScale.labelOf/colorOf both take `num?` and have always answered
+  /// 'Not Scored Yet' for null — the screens were written for this; only the
+  /// model stood in the way. The web client keeps the same distinction
+  /// (`percentage_rating: number | null` in models.ts), and
+  /// EstablishmentHistoryModal carries a comment about exactly this hazard.
+  final double? percentageRating;
   final String? remarks;
   final String inspectionDate;
-  final String? photoEvidenceUrl;
-
-  /// On-device path of an evidence photo that has not been uploaded yet.
+  // [REF: SANITARY_ORDER_FIELDS]
+  /// The Sanitary Order (CHO-ESD-FR-04) this inspection issued, if any.
   ///
-  /// Local-only staging: it is written into the Hive offline queue by
-  /// [toQueueJson] but NEVER into the database by [toJson], since a file path on
-  /// one inspector's phone is meaningless to anyone else. SyncService uploads
-  /// the file from this path on the next successful sync and fills in
-  /// [photoEvidenceUrl].
-  final String? localPhotoPath;
-
-  // [REF: OFFLINE_SIGNATURE_STAGING]
-  /// The inspector's sign-off, captured at submit (Chunk 7).
+  /// All nullable and all omitted from [toJson] when absent, like
+  /// [establishmentName] above: a spotless inspection issues no order, and a
+  /// reader has to be able to tell "no order" from "an order with nothing
+  /// recorded". [soIssuedAt] — not [soNo] — is the marker that an order
+  /// exists, because the number is typed off CHO's pre-numbered booklet and
+  /// is allowed to stay blank until their pattern is known.
   ///
-  /// [signatureUrl] and [signatureSha256] travel to the database strictly as a
-  /// pair — the hash exists to pin the uploaded PNG to this record, so a hash
-  /// for an image the server cannot see verifies nothing and [toJson] refuses
-  /// to write one. [localSignaturePath] is the same local-only staging idea
-  /// as [localPhotoPath]: written to the Hive queue by [toQueueJson] (with
-  /// the hash, so the retry can re-pair them), never to the database. All three
-  /// nullable because the fields are additive — logs written before Chunk 7
-  /// have none of them.
-  final String? signatureUrl;
-  final String? signatureSha256;
-  final String? localSignaturePath;
+  /// `email_sent_at` is deliberately NOT modelled here. It is stamped by the
+  /// delivery function server-side, and [toJson] is upserted on every retry —
+  /// a client that carried the field would overwrite the server's stamp with
+  /// null the next time a queued log re-synced.
+  final String? soNo;
+  final String? soIssuedAt;
+  final String? timeGiven;
+
+  /// A calendar day (`YYYY-MM-DD`) for a `date` column, never an instant —
+  /// see SanitaryOrder.toDateOnly for why the distinction matters here.
+  final String? deadline;
+
+  /// The "Received by" line: the owner or point person acknowledging service
+  /// on site, by name. (Signature pads were removed 2026-11-06; the printed
+  /// form keeps a blank line for wet ink.)
+  final String? receivedByName;
+
+  // [REF: PROPOSED_CONTACT]
+  /// The point person an inspector recorded in the field, for an admin to
+  /// approve.
+  ///
+  /// Carried on the log rather than written straight to the establishment for
+  /// two reasons, both structural: mobile has no write path to
+  /// `establishments` at all (it only reads them), and this is the one table
+  /// with an offline queue behind it — a contact recorded in a dead zone has
+  /// to survive the trip back. Approving one copies it onto
+  /// `establishments.point_person_email`, which is what the delivery function
+  /// actually reads, and provisions the owner account.
+  final String? proposedPointPersonName;
+  final String? proposedPointPersonEmail;
 
   final List<Map<String, dynamic>> results;
 
@@ -68,14 +95,16 @@ class InspectionLog {
     this.categoryName,
     required this.inspectorName,
     required this.totalDemerits,
-    required this.percentageRating,
+    required this.percentageRating,  // nullable, but never silently omitted
     this.remarks,
     String? inspectionDate,
-    this.photoEvidenceUrl,
-    this.localPhotoPath,
-    this.signatureUrl,
-    this.signatureSha256,
-    this.localSignaturePath,
+    this.soNo,
+    this.soIssuedAt,
+    this.timeGiven,
+    this.deadline,
+    this.receivedByName,
+    this.proposedPointPersonName,
+    this.proposedPointPersonEmail,
     List<Map<String, dynamic>>? results,
   })  : id = (id == null || id.isEmpty) ? const Uuid().v4() : id,
         // toUtc(), not local time: inspection_date is a timestamptz column
@@ -95,14 +124,16 @@ class InspectionLog {
       categoryName: json['category_name'] as String?,
       inspectorName: json['inspector_name'] as String? ?? '',
       totalDemerits: json['total_demerits'] as int? ?? 0,
-      percentageRating: (json['percentage_rating'] as num?)?.toDouble() ?? 0.0,
+      percentageRating: (json['percentage_rating'] as num?)?.toDouble(),
       remarks: json['remarks'] as String?,
       inspectionDate: json['inspection_date'] as String?,
-      photoEvidenceUrl: json['photo_evidence_url'] as String?,
-      localPhotoPath: json['local_photo_path'] as String?,
-      signatureUrl: json['signature_url'] as String?,
-      signatureSha256: json['signature_sha256'] as String?,
-      localSignaturePath: json['local_signature_path'] as String?,
+      soNo: json['so_no'] as String?,
+      soIssuedAt: json['so_issued_at'] as String?,
+      timeGiven: json['time_given'] as String?,
+      deadline: json['deadline'] as String?,
+      receivedByName: json['received_by_name'] as String?,
+      proposedPointPersonName: json['proposed_point_person_name'] as String?,
+      proposedPointPersonEmail: json['proposed_point_person_email'] as String?,
       results: (json['results'] as List?)
               ?.map((e) => Map<String, dynamic>.from(e as Map))
               .toList() ??
@@ -147,42 +178,25 @@ class InspectionLog {
       'percentage_rating': percentageRating,
       'remarks': remarks,
       'inspection_date': _normalizeTimestamp(inspectionDate),
-      'photo_evidence_url': photoEvidenceUrl,
-      // Strictly as a pair, in both directions: a hash without an image
-      // the server can see verifies nothing, and a URL without its hash loses
-      // the tamper-evidence that justifies storing either — any consumer
-      // checking one key may assume the other. A still-staged signature
-      // keeps its hash in the queue via toQueueJson instead; every live URL
-      // acquisition computes the hash first, so withholding an unhashed URL
-      // is defensive structure, not a reachable state.
-      if (signatureUrl != null && signatureSha256 != null) ...{
-        'signature_url': signatureUrl,
-        'signature_sha256': signatureSha256,
-      },
+      // [REF: SANITARY_ORDER_WRITE]
+      // Omitted rather than nulled when no order was issued, for the same
+      // reason as establishment_name: upsert() overwrites every key it is
+      // given, so writing nulls here would erase an order that a previous
+      // drain already landed. soIssuedAt is the marker; soNo may legitimately
+      // be null on an order that exists.
+      if (soIssuedAt != null) 'so_issued_at': _normalizeTimestamp(soIssuedAt!),
+      if (soNo != null) 'so_no': soNo,
+      if (timeGiven != null) 'time_given': timeGiven,
+      if (deadline != null) 'deadline': deadline,
+      if (receivedByName != null) 'received_by_name': receivedByName,
+      // Omitted when absent like the rest of the order: upsert overwrites
+      // every key it is handed, and nulling these on a retry would erase a
+      // proposal an admin may already be looking at.
+      if (proposedPointPersonName != null)
+        'proposed_point_person_name': proposedPointPersonName,
+      if (proposedPointPersonEmail != null)
+        'proposed_point_person_email': proposedPointPersonEmail,
       'results': results,
     };
-  }
-
-  // [REF: OFFLINE_PHOTO_STAGING]
-  /// The offline-queue representation. Identical to [toJson] plus the staged
-  /// local paths, so a queued inspection remembers which files on this device
-  /// still need uploading. Only ever written to Hive, never the database.
-  Map<String, dynamic> toQueueJson() {
-    final json = toJson();
-    if (localPhotoPath != null && localPhotoPath!.isNotEmpty) {
-      json['local_photo_path'] = localPhotoPath;
-    }
-    if (localSignaturePath != null && localSignaturePath!.isNotEmpty) {
-      json['local_signature_path'] = localSignaturePath;
-      // The hash rides with the staged path even though toJson withheld it
-      // (no URL yet): it was computed from the exact bytes in that file, and
-      // the retry in SyncService re-pairs it with the URL it earns. Dropping
-      // it here would mean re-hashing on retry — hashing a file that could by
-      // then differ from what the inspector saw at submit.
-      if (signatureSha256 != null) {
-        json['signature_sha256'] = signatureSha256;
-      }
-    }
-    return json;
   }
 }

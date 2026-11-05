@@ -65,6 +65,14 @@ class OfflineService {
 
   static String? readPref(String key) => _prefsBox.get(key);
 
+  // [REF: ROLE_CACHE_KEY]
+  /// Where the last known role for the signed-in account is remembered.
+  ///
+  /// Keyed by uid, not a bare 'role': two accounts can share a phone, and a
+  /// cached role read back for the wrong one would route an owner into the
+  /// inspector shell or vice versa.
+  static String rolePrefKey(String uid) => 'role:$uid';
+
   static Future<void> writePref(String key, String value) async {
     await _prefsBox.put(key, value);
   }
@@ -126,10 +134,19 @@ class OfflineService {
       // checklist unreachable anyway, so there is no state the old data
       // serves worse.
       //
-      // The establishment and template passes below still DO clear on an
-      // empty result. That asymmetry is pre-existing and worth closing the
-      // same way someday; its worst case is a filled categories box over an
-      // emptied template box, which shows rows that all report no checklist.
+      // [REF: EMPTY_SNAPSHOT_GUARD]
+      // The establishment and template passes below are now guarded the same
+      // way. They were not, and the asymmetry had a second, sharper failure
+      // mode than the one noted here: an account whose RLS returns no
+      // establishments and no templates — an establishment owner, since
+      // 06_owner_role.sql — would empty both boxes. The Hive boxes are global
+      // to the device, not per-account, so an owner signing in on a phone an
+      // inspector uses took that inspector's offline cache with them, and the
+      // next inspection in a dead zone reported "No checklist categories on
+      // this device yet".
+      //
+      // An empty snapshot is never distinguishable from a snapshot the caller
+      // is not allowed to see, so the only safe reading of one is "no news".
       final catBox = Hive.box<InspectionCategory>(categoriesBoxName);
       if (serverCategories.isNotEmpty) {
         await catBox.clear();
@@ -249,21 +266,29 @@ class OfflineService {
         );
       }
 
-      // Delete by key rather than clear()ing: the records this bridge exists
-      // to protect are never removed at all, so no failure between the delete
-      // and the repopulate can lose them. (clear() + re-put would also work —
-      // Hive re-inits a disposed HiveObject — but it reopens exactly the
-      // window the parse-first pass above was written to close.) A stranded
-      // key that also exists on the server is left for putAll to overwrite,
-      // so the server copy still wins.
-      final staleKeys =
-          estBox.keys.where((k) => !strandedKeys.contains(k)).toList();
-      await estBox.deleteAll(staleKeys);
+      // [REF: EMPTY_SNAPSHOT_GUARD]
+      if (serverEsts.isEmpty) {
+        debugPrint(
+          'Establishments snapshot was empty; keeping ${estBox.length} cached '
+          'establishment(s) rather than emptying the device',
+        );
+      } else {
+        // Delete by key rather than clear()ing: the records this bridge exists
+        // to protect are never removed at all, so no failure between the
+        // delete and the repopulate can lose them. (clear() + re-put would
+        // also work — Hive re-inits a disposed HiveObject — but it reopens
+        // exactly the window the parse-first pass above was written to close.)
+        // A stranded key that also exists on the server is left for putAll to
+        // overwrite, so the server copy still wins.
+        final staleKeys =
+            estBox.keys.where((k) => !strandedKeys.contains(k)).toList();
+        await estBox.deleteAll(staleKeys);
 
-      // One transaction, so a backend failure rolls the whole repopulate back
-      // instead of leaving a partially filled box behind a log line that says
-      // the local cache was kept.
-      await estBox.putAll({for (final est in serverEsts) est.id: est});
+        // One transaction, so a backend failure rolls the whole repopulate
+        // back instead of leaving a partially filled box behind a log line
+        // that says the local cache was kept.
+        await estBox.putAll({for (final est in serverEsts) est.id: est});
+      }
 
       // ── 3. Sync checklist templates ───────────────────────────────────────
       final templateRows = await _fetchAllRows('checklist_templates');
@@ -304,8 +329,19 @@ class OfflineService {
         serverTemplates.add(ChecklistTemplate.fromJson(data));
       }
 
-      await tempBox.clear();
-      await tempBox.putAll({for (final t in serverTemplates) t.id: t});
+      // [REF: EMPTY_SNAPSHOT_GUARD]
+      // The sharpest of the three to get wrong: with no templates every
+      // category reports "no checklist", so the inspector can open a form and
+      // submit nothing.
+      if (serverTemplates.isEmpty) {
+        debugPrint(
+          'Templates snapshot was empty; keeping ${tempBox.length} cached '
+          'template(s) rather than emptying every checklist',
+        );
+      } else {
+        await tempBox.clear();
+        await tempBox.putAll({for (final t in serverTemplates) t.id: t});
+      }
 
       debugPrint('Synced ${tempBox.length} templates successfully.');
     } catch (e, st) {

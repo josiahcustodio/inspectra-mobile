@@ -102,41 +102,52 @@ class ChecklistItemCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 16),
+                // [REF: CHECKLIST_FIELDS] The form's blanks and Y/N boxes for
+                // this item, above the verdict so the inspector records what
+                // they measured before judging it. Optional: nothing here
+                // blocks submit.
+                for (final f in item.fields) ...[
+                  _buildField(f, provider.itemValues[item.id]?[f.label], provider),
+                  const SizedBox(height: 10),
+                ],
                 // Full-width Segmented Control
                 _buildSegmentedControl(context, currentAnswer, provider),
                 
-                // Expanded Notes Area for Failures
+                // [REF: SO_DEFECT_CAPTURE]
+                // The two columns of the Sanitary Order's table, captured in
+                // the inspector's own words at the moment they see the defect.
+                // Both only exist on a Fail, and both are required by
+                // SanitaryOrder.firstBlocker — an order that names a violation
+                // without saying what to fix is not one anybody can comply
+                // with, and a blank defect line is unenforceable.
                 AnimatedSize(
                   duration: const Duration(milliseconds: 300),
                   curve: Curves.easeOutCubic,
                   child: isFail
                       ? Padding(
                           padding: const EdgeInsets.only(top: 16.0),
-                          child: TextFormField(
-                            initialValue: provider.itemNotes[item.id] ?? '',
-                            onChanged: (val) => provider.setNote(item.id, val),
-                            decoration: InputDecoration(
-                              hintText: 'Add deficiency notes (Required)...',
-                              hintStyle: const TextStyle(
-                                  color: Colors.black38, fontFamily: '.SF Pro Text', fontSize: 14),
-                              prefixIcon: const Icon(Icons.edit_note_rounded, color: Colors.black38),
-                              filled: true,
-                              fillColor: Colors.red.shade50.withAlpha(128),
-                              contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: Colors.red.shade200),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildDefectField(
+                                initialValue: provider.itemNotes[item.id] ?? '',
+                                onChanged: (val) => provider.setNote(item.id, val),
+                                // The form's own wording, so what the inspector
+                                // types reads the same on screen and on paper.
+                                hintText: 'Sanitary defect / violation (Required)...',
+                                icon: Icons.edit_note_rounded,
                               ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: Colors.red.shade200),
+                              const SizedBox(height: 10),
+                              _buildDefectField(
+                                initialValue:
+                                    provider.itemCorrections[item.id] ?? '',
+                                onChanged: (val) =>
+                                    provider.setCorrection(item.id, val),
+                                hintText:
+                                    'Recommended correction / action (Required)...',
+                                icon: Icons.build_circle_outlined,
                               ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: const BorderSide(color: Colors.redAccent, width: 1.5),
-                              ),
-                            ),
-                            style: const TextStyle(fontFamily: '.SF Pro Text', fontSize: 14),
+                            ],
                           ),
                         )
                       : const SizedBox.shrink(),
@@ -146,6 +157,106 @@ class ChecklistItemCard extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildField(
+      ChecklistField f, dynamic current, RatingProvider provider) {
+    final List<String> options = switch (f.type) {
+      'yesno' => const ['Yes', 'No'],
+      'choice' || 'multi' => f.options,
+      _ => const [],
+    };
+    if (options.isEmpty) {
+      return TextFormField(
+        initialValue: current?.toString() ?? '',
+        keyboardType: f.type == 'number'
+            ? const TextInputType.numberWithOptions(decimal: true)
+            : TextInputType.text,
+        onChanged: (v) => provider.setValue(item.id, f.label, v),
+        decoration: InputDecoration(
+          labelText: f.label,
+          hintText: f.type == 'date' ? 'YYYY-MM-DD' : null,
+          isDense: true,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+        style: const TextStyle(fontFamily: '.SF Pro Text', fontSize: 14),
+      );
+    }
+    final multi = f.type == 'multi';
+    final selected = multi
+        ? (current as List?)?.map((e) => e.toString()).toSet() ?? <String>{}
+        : {if (current != null) current.toString()};
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(f.label,
+            style: const TextStyle(
+                fontFamily: '.SF Pro Text',
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textSecondary)),
+        const SizedBox(height: 4),
+        Wrap(
+          spacing: 6,
+          runSpacing: 4,
+          children: [
+            for (final o in options)
+              FilterChip(
+                label: Text(o),
+                selected: selected.contains(o),
+                showCheckmark: multi,
+                onSelected: (on) {
+                  if (multi) {
+                    final next = {...selected};
+                    on ? next.add(o) : next.remove(o);
+                    provider.setValue(item.id, f.label, next.toList());
+                  } else {
+                    provider.setValue(item.id, f.label, on ? o : null);
+                  }
+                },
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// One of the two deficiency fields. Shared rather than duplicated because
+  /// the only thing that differs between them is the hint, the icon and where
+  /// the text goes.
+  Widget _buildDefectField({
+    required String initialValue,
+    required ValueChanged<String> onChanged,
+    required String hintText,
+    required IconData icon,
+  }) {
+    return TextFormField(
+      initialValue: initialValue,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        hintText: hintText,
+        hintStyle: const TextStyle(
+            color: Colors.black38, fontFamily: '.SF Pro Text', fontSize: 14),
+        prefixIcon: Icon(icon, color: Colors.black38),
+        filled: true,
+        fillColor: Colors.red.shade50.withAlpha(128),
+        contentPadding:
+            const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.red.shade200),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.red.shade200),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.redAccent, width: 1.5),
+        ),
+      ),
+      style: const TextStyle(fontFamily: '.SF Pro Text', fontSize: 14),
     );
   }
 

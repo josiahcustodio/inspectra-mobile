@@ -31,13 +31,22 @@ class EstablishmentAdapter extends TypeAdapter<Establishment> {
       isSynced: fields[11] == null ? true : fields[11] as bool,
       createdAt: fields[12] as String?,
       qrCodeId: fields[13] as String?,
+      businessPermitNo: fields[14] as String?,
+      applicType: fields[15] as String?,
+      permitDateIssued: fields[16] as String?,
+      lineOfBusiness: fields[17] as String?,
+      floorAreaSqm: fields[18] as String?,
+      telNo: fields[19] as String?,
+      tin: fields[20] as String?,
+      latitude: fields[21] as double?,
+      longitude: fields[22] as double?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Establishment obj) {
     writer
-      ..writeByte(14)
+      ..writeByte(23)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -65,7 +74,25 @@ class EstablishmentAdapter extends TypeAdapter<Establishment> {
       ..writeByte(12)
       ..write(obj.createdAt)
       ..writeByte(13)
-      ..write(obj.qrCodeId);
+      ..write(obj.qrCodeId)
+      ..writeByte(14)
+      ..write(obj.businessPermitNo)
+      ..writeByte(15)
+      ..write(obj.applicType)
+      ..writeByte(16)
+      ..write(obj.permitDateIssued)
+      ..writeByte(17)
+      ..write(obj.lineOfBusiness)
+      ..writeByte(18)
+      ..write(obj.floorAreaSqm)
+      ..writeByte(19)
+      ..write(obj.telNo)
+      ..writeByte(20)
+      ..write(obj.tin)
+      ..writeByte(21)
+      ..write(obj.latitude)
+      ..writeByte(22)
+      ..write(obj.longitude);
   }
 
   @override

@@ -186,7 +186,12 @@ class _HistoryCard extends StatelessWidget {
               children: [
                 _StatPill(
                   icon: Icons.percent_rounded,
-                  label: '${log.percentageRating.toStringAsFixed(1)}%',
+                  // A dash, not "0.0%": an unscored log has no percentage, and
+                  // printing one asserts a failing grade nobody recorded. The
+                  // `label` beside it already reads 'Not Scored Yet'.
+                  label: log.percentageRating == null
+                      ? '—'
+                      : '${log.percentageRating!.toStringAsFixed(1)}%',
                   color: color,
                 ),
                 const SizedBox(width: 8),

@@ -3,6 +3,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'core/app_updater.dart';
 import 'core/supabase_config.dart';
 import 'core/theme/app_theme.dart';
 import 'data/services/offline_service.dart';
@@ -85,6 +86,7 @@ class ClowtecInspectorApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       routerConfig: router,
+      builder: (context, child) => UpdateGate(child: child!),
     );
   }
 }

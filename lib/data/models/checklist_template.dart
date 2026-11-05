@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:hive/hive.dart';
 
 part 'checklist_template.g.dart';
@@ -32,6 +34,16 @@ class ChecklistTemplate extends HiveObject {
   @HiveField(5)
   final String? categoryId;
 
+  // [REF: CHECKLIST_FIELDS]
+  /// Extra inputs the form asks for on this item, besides Pass/Fail/N/A: the
+  /// blanks and Y/N boxes of forms like Livestock Farm ("_____m, Septic
+  /// Tank") that a verdict alone cannot record. Stored as the raw JSON text of
+  /// the `checklist_templates.fields` column because Hive has no adapter for
+  /// a list of maps; nullable for the same reason as [categoryId] — boxes on
+  /// phones predate the field.
+  @HiveField(6)
+  final String? fieldsJson;
+
   ChecklistTemplate({
     required this.id,
     required this.category,
@@ -39,7 +51,20 @@ class ChecklistTemplate extends HiveObject {
     required this.item,
     required this.weight,
     this.categoryId,
+    this.fieldsJson,
   });
+
+  List<ChecklistField> get fields {
+    final raw = fieldsJson;
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      return (jsonDecode(raw) as List)
+          .map((e) => ChecklistField.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList();
+    } catch (_) {
+      return const []; // a malformed row degrades to a plain Pass/Fail item
+    }
+  }
 
   factory ChecklistTemplate.fromJson(Map<String, dynamic> json) {
     return ChecklistTemplate(
@@ -56,6 +81,7 @@ class ChecklistTemplate extends HiveObject {
       // (three establishments still hold the int 1), and syncData already
       // defends against it the same way.
       categoryId: json['category_id']?.toString(),
+      fieldsJson: json['fields'] is List ? jsonEncode(json['fields']) : null,
     );
   }
 
@@ -71,4 +97,29 @@ class ChecklistTemplate extends HiveObject {
       weight: 0,
     );
   }
+}
+
+/// One extra input on a checklist item. `label` doubles as the key the value
+/// is stored under in the log's `results[].values`, so a result row stays
+/// self-describing like its `item_name` does.
+///
+/// `type` is one of: text, number, date, yesno, choice (one of [options]),
+/// multi (any of [options]). Anything else renders as text.
+class ChecklistField {
+  final String label;
+  final String type;
+  final List<String> options;
+
+  const ChecklistField({
+    required this.label,
+    this.type = 'text',
+    this.options = const [],
+  });
+
+  factory ChecklistField.fromJson(Map<String, dynamic> json) => ChecklistField(
+        label: json['label']?.toString() ?? '',
+        type: json['type']?.toString() ?? 'text',
+        options: (json['options'] as List?)?.map((e) => e.toString()).toList() ??
+            const [],
+      );
 }

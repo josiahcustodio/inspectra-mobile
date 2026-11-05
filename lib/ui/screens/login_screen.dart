@@ -1,9 +1,11 @@
 import 'package:go_router/go_router.dart';
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../data/services/auth_service.dart';
 import '../../core/theme/app_colors.dart';
 
 // [REF: LOGIN_SCREEN]
@@ -282,6 +284,62 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
 
+              const SizedBox(height: 20),
+
+              // [REF: OWNER_SIGNIN_ENTRY]
+              // Below a divider rather than beside the inspector fields: these
+              // are two different audiences, and an establishment owner has no
+              // password to put in the form above — their sign-in is a mailed
+              // code and nothing else.
+              Row(
+                children: [
+                  Expanded(child: Container(height: 1, color: AppColors.border)),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12),
+                    child: Text(
+                      'or',
+                      style: TextStyle(
+                        fontFamily: '.SF Pro Text',
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                  Expanded(child: Container(height: 1, color: AppColors.border)),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Center(
+                child: InkWell(
+                  onTap: () => _showOwnerSignInDialog(context),
+                  child: const Padding(
+                    padding: EdgeInsets.all(8.0),
+                    child: Column(
+                      children: [
+                        Text(
+                          'I own or manage an establishment',
+                          style: TextStyle(
+                            fontFamily: '.SF Pro Text',
+                            fontSize: 14,
+                            color: AppColors.brandStrong,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'View your inspection results',
+                          style: TextStyle(
+                            fontFamily: '.SF Pro Text',
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
               const SizedBox(height: 16),
             ],
           ),
@@ -378,6 +436,279 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  // [REF: OWNER_SIGNIN_DIALOG]
+  /// Two steps in one dialog: address, then the code mailed to it.
+  ///
+  /// There is no password here and there is not meant to be. A generated
+  /// temporary password would make the mailbox the real credential anyway,
+  /// while adding a forced-change screen, a reset path and a lockout policy —
+  /// and leaving a live credential sitting in an inbox.
+  ///
+  /// The step always advances after "Send code", whatever the server said.
+  /// GoTrue answers an unknown address with `otp_disabled` when
+  /// shouldCreateUser is false, so reporting that faithfully would turn this
+  /// dialog into a way to test whether a particular business owner has an
+  /// account here. Only connectivity failures and rate limits are surfaced: the
+  /// user can act on both, and neither says anything about the address.
+  /// Everything else gets the same neutral sentence.
+  void _showOwnerSignInDialog(BuildContext context) {
+    final emailController = TextEditingController(text: _emailController.text);
+    final codeController = TextEditingController();
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    // Out here, not inside the builder: sendOwnerOtp notifies listeners, which
+    // re-runs the builder, and state declared in it would reset mid-request
+    // while the request's result landed in the discarded copy.
+    bool codeSent = false;
+    bool busy = false;
+    String? inlineError;
+    // Mirrors the server's per-address limit (smtp_max_frequency), so the button
+    // is not offered during the window it would only be refused in.
+    const resendCooldownSeconds = 60;
+    int resendIn = 0;
+    Timer? resendTimer;
+
+    // Disposed when the dialog route finishes rather than in the State's
+    // dispose: these two belong to the dialog, not to the screen, and the
+    // screen can outlive several openings of it.
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            Future<void> sendCode() async {
+              final email = emailController.text.trim();
+              if (!email.contains('@')) {
+                setDialogState(() => inlineError = 'Enter a valid email address.');
+                return;
+              }
+              setDialogState(() {
+                busy = true;
+                inlineError = null;
+              });
+              final ok = await authProvider.sendOwnerOtp(email);
+              final message = authProvider.errorMessage;
+              if (!ctx.mounted) return;
+              setDialogState(() {
+                busy = false;
+                // Worth naming: the user can act on them, they tell an attacker
+                // nothing, and "a code is on its way" would be false for both.
+                if (!ok &&
+                    message != null &&
+                    (AuthService.looksLikeNetworkError(message) ||
+                        message.startsWith('Too many'))) {
+                  inlineError = message;
+                } else {
+                  codeSent = true;
+                  // A new code replaces the old one, so a stale entry can only fail.
+                  codeController.clear();
+                  resendIn = resendCooldownSeconds;
+                  resendTimer?.cancel();
+                  resendTimer =
+                      Timer.periodic(const Duration(seconds: 1), (timer) {
+                    if (!ctx.mounted) {
+                      timer.cancel();
+                      return;
+                    }
+                    setDialogState(() {
+                      resendIn--;
+                      if (resendIn <= 0) timer.cancel();
+                    });
+                  });
+                }
+              });
+            }
+
+            Future<void> verify() async {
+              setDialogState(() {
+                busy = true;
+                inlineError = null;
+              });
+              final ok = await authProvider.verifyOwnerOtp(
+                emailController.text.trim(),
+                codeController.text,
+              );
+              if (ok) {
+                // [REF: OWNER_OTP_SCOPE]
+                // signInWithOtp mails a code to any EXISTING account, so a
+                // successful verify here proves control of the mailbox and
+                // nothing about which kind of account it is. Without this
+                // check the dialog would be a passwordless sign-in for
+                // officers and admins too.
+                //
+                // Staff have passwords and the form above; an owner has only
+                // this. So a non-owner session is ended rather than handed to
+                // the router.
+                //
+                // Nothing here is gated on the dialog still being mounted: the
+                // new session can make the router dismiss it, and that must not
+                // skip the sign-out.
+                final role = await authProvider.ensureRole();
+                if (role != null && role != 'owner') {
+                  await authProvider.signOut();
+                  if (!ctx.mounted) return;
+                  setDialogState(() {
+                    busy = false;
+                    inlineError =
+                        'That address belongs to a City Health Office staff '
+                        'account. Sign in with your email and password above.';
+                  });
+                  return;
+                }
+                // The auth listener picks the session up and resolves the
+                // role; the router does the rest.
+                if (ctx.mounted) ctx.pop();
+                return;
+              }
+              if (!ctx.mounted) return;
+              setDialogState(() {
+                busy = false;
+                inlineError = authProvider.errorMessage ??
+                    'That code did not work. Check it and try again.';
+              });
+            }
+
+            return AlertDialog(
+              backgroundColor: Colors.white,
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              title: Text(
+                codeSent ? 'Enter your code' : 'View your inspections',
+                style: const TextStyle(
+                    fontFamily: '.SF Pro Display',
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textDisplay),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      codeSent
+                          ? 'If ${emailController.text.trim()} is registered '
+                              'with the City Health Office, a 6-digit code is '
+                              'on its way. It expires shortly.'
+                          : 'Enter the email address the City Health Office '
+                              'has on record for your establishment. We will '
+                              'send you a code — no password needed.',
+                      style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 13,
+                          height: 1.5),
+                    ),
+                    const SizedBox(height: 16),
+                    if (!codeSent)
+                      TextField(
+                        controller: emailController,
+                        decoration: _dialogInputDecoration('Email Address'),
+                        keyboardType: TextInputType.emailAddress,
+                        autocorrect: false,
+                        enabled: !busy,
+                      )
+                    else
+                      TextField(
+                        controller: codeController,
+                        decoration: _dialogInputDecoration('6-digit code'),
+                        keyboardType: TextInputType.number,
+                        autofocus: true,
+                        enabled: !busy,
+                      ),
+                    if (inlineError != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        inlineError!,
+                        style: const TextStyle(
+                            color: Colors.redAccent,
+                            fontSize: 12,
+                            fontFamily: '.SF Pro Text'),
+                      ),
+                    ],
+                    if (codeSent) ...[
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: busy || resendIn > 0 ? null : sendCode,
+                        style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(0, 32)),
+                        child: Text(
+                          resendIn > 0
+                              ? 'Resend code in ${resendIn}s'
+                              : 'Resend code',
+                          style: const TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: busy
+                            ? null
+                            : () => setDialogState(() {
+                                  codeSent = false;
+                                  codeController.clear();
+                                  inlineError = null;
+                                }),
+                        style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(0, 32)),
+                        child: const Text(
+                          'Use a different email',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textSecondary),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actionsPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              actions: [
+                TextButton(
+                  onPressed: busy ? null : () => ctx.pop(),
+                  style: TextButton.styleFrom(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                  child: const Text('Cancel',
+                      style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontWeight: FontWeight.w600)),
+                ),
+                ElevatedButton(
+                  onPressed: busy ? null : (codeSent ? verify : sendCode),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.brandStrong,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    elevation: 0,
+                  ),
+                  child: busy
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
+                        )
+                      : Text(codeSent ? 'Sign In' : 'Send Code',
+                          style: const TextStyle(
+                              color: Colors.white, fontWeight: FontWeight.w600)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    ).whenComplete(() {
+      resendTimer?.cancel();
+      emailController.dispose();
+      codeController.dispose();
+    });
+  }
+
   // [REF: SIGNUP_DIALOG]
   void _showSignUpDialog(BuildContext context) {
     final nameController = TextEditingController();
@@ -452,9 +783,17 @@ class _LoginScreenState extends State<LoginScreen> {
                   // Supabase keeps the new account signed out until the
                   // verification link is clicked, so tell the user what
                   // comes next instead of waiting for a session.
+                  //
+                  // The activation sentence is not optional. A new account is
+                  // 'pending' now (see [REF: NEW_USER_IS_POWERLESS]) and can
+                  // read nothing at all, so a message that stopped at "then
+                  // sign in" would promise a working app and deliver an empty
+                  // one.
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                       content: Text(
-                          'Account created! Check your inbox to verify your email, then sign in.')));
+                          'Account created! Verify your email, then ask an '
+                          'administrator to activate your account.'),
+                      duration: Duration(seconds: 6)));
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(authProvider.errorMessage ?? 'Error')));
                 }

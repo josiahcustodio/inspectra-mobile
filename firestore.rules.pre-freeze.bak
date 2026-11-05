@@ -1,0 +1,151 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserRole() {
+      // Guard with exists() — a brand-new signed-in user has no profile doc
+      // yet, and .data.role on a missing doc would error the whole rule
+      // rather than cleanly evaluate to "no role".
+      return exists(/databases/$(database)/documents/profiles/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role
+        : null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && getUserRole() == 'admin';
+    }
+
+    function isOfficer() {
+      return isAuthenticated() && getUserRole() == 'officer';
+    }
+
+    function isAuthorized() {
+      return isAdmin() || isOfficer();
+    }
+
+    // 1. Profiles
+    match /profiles/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+
+      // Bootstrap: a signed-in user may create ONLY their own profile doc,
+      // and only with role 'officer'. This is the client-side stand-in for
+      // the old Supabase handle_new_user() trigger (see
+      // supabase/migrations/20260625171500_auth_roles.sql in inspectra-web) —
+      // there is no Cloud Function yet, so self-signup can never grant
+      // 'admin'. Without this, no user could ever get a profile at all:
+      // isAdmin() requires an existing profile saying so, and nobody starts
+      // as admin.
+      allow create: if isAuthenticated()
+        && request.auth.uid == userId
+        && request.resource.data.role == 'officer';
+
+      // Once created, role changes (including promotion to admin) are
+      // admin-only. The very first admin has to be set by hand in the
+      // Firebase console — there is no self-promotion path by design.
+      allow update, delete: if isAdmin();
+    }
+
+    // 2. Establishments
+    //
+    // DO NOT narrow create/update to isAdmin(). It looks wrong — the mobile app
+    // is read-only here and the web admin is the sole owner of this data — but
+    // "web admin" does not mean "admin role". inspectra-web mounts its
+    // Establishments page under both the admin and the officer branch of
+    // routes.tsx, and its Add/Edit buttons are not role-gated; both call
+    // saveEstablishment ([REF: ESTABLISHMENT_WRITE]). Every self-signup is an
+    // officer, since the profiles create rule above pins role == 'officer'.
+    // Tightening this to isAdmin() would lock most of the web app's real users
+    // out of the only screen that maintains establishments.
+    //
+    // Mobile not writing is enforced by the absence of any write call — see the
+    // Establishments note in lib/data/services/sync_service.dart — not here.
+    // (Decision D17.)
+    match /establishments/{establishmentId} {
+      allow read: if isAuthorized();
+      allow create, update: if isAuthorized();
+      allow delete: if isAdmin();
+
+      // Permit-year history, written by the web admin's masterlist importer
+      // ([REF: MASTERLIST_IMPORT_WRITES] in inspectra-web): one document per
+      // permit number, carrying the parsed Excel row plus the raw original
+      // cells as the audit trail. Writes mirror the parent establishment
+      // (same D17 reasoning — the importer page is admin-routed, but the
+      // parent's maintainers are isAuthorized, and narrowing only this
+      // sub-collection would make an establishment edit flow half-work).
+      match /permits/{permitNo} {
+        allow read: if isAuthorized();
+        allow create, update: if isAuthorized();
+        allow delete: if isAdmin();
+      }
+    }
+
+    // 3. Inspection Logs
+    match /inspection_logs/{logId} {
+      allow read: if isAuthorized();
+      allow create, update: if isAuthorized();
+      allow delete: if isAdmin();
+
+      // LEGACY — per-item checklist answers.
+      //
+      // Both clients now store answers in a `results` array on the parent
+      // inspection_logs document (see [REF: INSPECTION_RESULTS_SCHEMA] in
+      // inspectra-web's sync.ts). The historical contents of this
+      // sub-collection were copied up into that field, and nothing writes
+      // here any more.
+      //
+      // Access is kept open for two reasons: the web client still falls back
+      // to reading it for any log that somehow has no embedded results, and a
+      // stale cached PWA build could still be writing here until it updates.
+      // Safe to delete this block once no old clients remain in the wild —
+      // at which point the sub-collection documents can be deleted too.
+      match /inspection_results/{itemId} {
+        allow read: if isAuthorized();
+        allow create, update: if isAuthorized();
+        allow delete: if isAdmin();
+      }
+    }
+
+    // 4. Reference Data
+    match /categories/{categoryId} {
+      allow read: if isAuthorized();
+      allow write: if isAdmin();
+    }
+    match /checklist_templates/{templateId} {
+      allow read: if isAuthorized();
+      allow write: if isAdmin();
+    }
+    match /inspectors/{inspectorId} {
+      allow read: if isAuthorized();
+      allow write: if isAdmin();
+    }
+
+    // 5. Masterlist import machinery
+    //
+    // Admin-only, unlike establishments above: the Import page is mounted
+    // only under the admin branch of inspectra-web's routes.tsx, so there is
+    // no officer UI that could hit these — the D17 concern doesn't apply.
+    // upload_batches is the audit record of each Excel import; review_queue
+    // holds fuzzy near-matches awaiting a human merge/create decision.
+    match /upload_batches/{batchId} {
+      allow read, create, update: if isAdmin();
+      // No delete: a batch document is the only record of what an import
+      // did to the masterlist.
+      allow delete: if false;
+    }
+    match /review_queue/{itemId} {
+      allow read, create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

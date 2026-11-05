@@ -19,6 +19,12 @@ class AuthProvider extends ChangeNotifier {
   bool _needsAal2 = false;
 
   bool? _hasTotpEnrolled; // null = unknown/loading, false = needs enrollment
+
+  // [REF: ROLE_STATE]
+  /// This account's role, or null while unresolved. Null is "unknown", never
+  /// "no access" — see [roleUnknown] for why the distinction is load-bearing.
+  String? _role;
+
   StreamSubscription<supa.AuthState>? _authSub;
 
   bool get isLoading => _isLoading;
@@ -42,6 +48,27 @@ class AuthProvider extends ChangeNotifier {
   bool get needsEmailVerification =>
       isAuthenticated && user!.emailConfirmedAt == null;
 
+  String? get role => _role;
+
+  /// Signed in, but which kind of account is not known yet.
+  ///
+  /// The router must not guess here. Treating unknown as "inspector" would
+  /// march an establishment owner into TOTP enrollment; treating it as "owner"
+  /// would send an inspector to a screen with none of their work on it. Both
+  /// are worse than a spinner, so this pins to the splash.
+  bool get roleUnknown => isAuthenticated && _role == null;
+
+  /// An establishment's point person: read-only, and only for the
+  /// establishments mapped to them in `establishment_contacts`.
+  bool get isOwner => _role == 'owner';
+
+  /// A brand-new account nobody has approved yet.
+  ///
+  /// Every policy denies 'pending', so this session can reach no data at all.
+  /// It needs its own screen: without one, a new inspector lands on a home
+  /// screen of empty lists with nothing explaining why.
+  bool get isPendingApproval => _role == 'pending';
+
   AuthProvider() {
     _init();
   }
@@ -52,15 +79,26 @@ class AuthProvider extends ChangeNotifier {
       final session = state.session;
       debugPrint('Auth state changed (${state.event}): '
           '${session?.user.id ?? "signed out"}');
+      // gotrue's listFactors() calls refreshSession(), which emits
+      // tokenRefreshed, which re-enters this listener: an infinite refresh
+      // loop that ends in a 429 and a forced sign-out. A refreshed token
+      // changes neither the role nor the MFA state, so there is nothing to
+      // recompute here.
+      if (state.event == AuthChangeEvent.tokenRefreshed) return;
       if (session != null) {
         // No ensureProfile() call any more: the handle_new_user() trigger
         // creates profiles/{uid} server-side the moment the auth user is
         // born, so there is nothing for the client to bootstrap.
         _needsAal2 = MfaService.needsAal2Upgrade;
         _hasTotpEnrolled = await MfaService.hasTotpEnrolled();
+        // Fetched here rather than lazily at the first screen: every routing
+        // decision below depends on it, so an unresolved role has to be a
+        // state the router can see rather than a surprise mid-navigation.
+        _role = await AuthService.fetchRole();
       } else {
         _needsAal2 = false;
         _hasTotpEnrolled = null;
+        _role = null;
       }
       notifyListeners();
     });
@@ -111,6 +149,58 @@ class AuthProvider extends ChangeNotifier {
   /// signs out of it entirely.
   Future<void> cancelMfaChallenge() async {
     await signOut();
+  }
+
+  /// Re-reads the role, for the one case the auth listener cannot cover: an
+  /// admin approving this account while the app sits on the pending screen.
+  Future<void> refreshRole() async {
+    if (!isAuthenticated) return;
+    _role = await AuthService.fetchRole();
+    notifyListeners();
+  }
+
+  /// Resolves the role if it is not known yet, and returns it. The splash
+  /// awaits this before deciding where to send the session.
+  Future<String?> ensureRole() async {
+    if (!isAuthenticated) return null;
+    if (_role == null) await refreshRole();
+    return _role;
+  }
+
+  // [REF: OWNER_OTP_FLOW]
+  /// Mails a sign-in code to an establishment's point person.
+  Future<bool> sendOwnerOtp(String email) async {
+    _setLoading(true);
+    _setErrorMessage(null);
+    try {
+      await AuthService.sendOwnerOtp(email);
+      return true;
+    } catch (e) {
+      _setErrorMessage(e is Exception
+          ? e.toString().replaceFirst('Exception: ', '')
+          : e.toString());
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  /// Exchanges the mailed code for a session. The auth listener picks the
+  /// session up and resolves the role, so there is nothing to do on success
+  /// but let the router react.
+  Future<bool> verifyOwnerOtp(String email, String token) async {
+    _setLoading(true);
+    _setErrorMessage(null);
+    try {
+      return await AuthService.verifyOwnerOtp(email, token);
+    } catch (e) {
+      _setErrorMessage(e is Exception
+          ? e.toString().replaceFirst('Exception: ', '')
+          : e.toString());
+      return false;
+    } finally {
+      _setLoading(false);
+    }
   }
 
   Future<void> refreshMfaStatus() async {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/rating_scale.dart';
 import '../../core/theme/app_theme.dart';
@@ -34,7 +35,7 @@ class HomeScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildHeader(theme),
+              _buildHeader(context, theme),
               const SizedBox(height: 24),
               _buildPrimaryAction(context, theme),
               const SizedBox(height: 32),
@@ -50,7 +51,7 @@ class HomeScreen extends StatelessWidget {
 
   // ─── Header ───────────────────────────────────────────────────────────────────
 
-  Widget _buildHeader(ThemeData theme) {
+  Widget _buildHeader(BuildContext context, ThemeData theme) {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
       child: Row(
@@ -63,17 +64,27 @@ class HomeScreen extends StatelessWidget {
               style: theme.textTheme.headlineMedium,
             ),
           ),
-          Container(
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.grey.shade200, width: 2),
-            ),
-            child: const CircleAvatar(
-              radius: 20,
-              backgroundColor: AppTheme.accent,
-              foregroundColor: AppTheme.secondary,
-              child: Icon(Icons.person, size: 24),
+          // Profile & settings live here now that the bottom bar's last slot
+          // is the Map tab.
+          Semantics(
+            button: true,
+            label: 'Profile and settings',
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () => context.push('/profile'),
+              child: Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.grey.shade200, width: 2),
+                ),
+                child: const CircleAvatar(
+                  radius: 20,
+                  backgroundColor: AppTheme.accent,
+                  foregroundColor: AppTheme.secondary,
+                  child: Icon(Icons.person, size: 24),
+                ),
+              ),
             ),
           ),
         ],
@@ -335,7 +346,10 @@ class HomeScreen extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            '${pct.toStringAsFixed(0)}%',
+                            // A dash, not "0%": an unscored inspection has no
+                            // percentage, and printing one claims the worst
+                            // band for a record nobody graded.
+                            pct == null ? '—' : '${pct.toStringAsFixed(0)}%',
                             style: TextStyle(
                               color: color,
                               fontWeight: FontWeight.w700,

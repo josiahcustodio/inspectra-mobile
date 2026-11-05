@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/rating_scale.dart';
+import '../../core/sanitary_order.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/services/sync_service.dart';
 import '../../core/theme/app_colors.dart';
@@ -51,12 +52,18 @@ class _InspectionDetailsScreenState extends State<InspectionDetailsScreen> {
         grouped[catName]!.add(resMap);
       }
 
+      // Pre-dating the Sanitary Order work, and guarded now because this
+      // screen is one tap from two different lists: popping it while the
+      // fetch is in flight — ordinary on a slow connection — reached
+      // setState on a dead State and threw.
+      if (!mounted) return;
       setState(() {
         _logData = data;
         _groupedResults = grouped;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = 'Could not load inspection details.';
         _isLoading = false;
@@ -145,7 +152,11 @@ class _InspectionDetailsScreenState extends State<InspectionDetailsScreen> {
     final demerits = _logData!['total_demerits'] as int? ?? 0;
     final inspector = _logData!['inspector_name'] as String? ?? 'Unknown';
     final remarks = _logData!['remarks'] as String?;
-    final signatureUrl = _logData!['signature_url'] as String?;
+
+    // The order, when this inspection issued one. so_issued_at is the marker,
+    // not so_no: the number is typed off CHO's pre-numbered booklet and may
+    // legitimately be blank on a real order.
+    final soIssuedAt = _logData!['so_issued_at'] as String?;
 
     return ListView(
       physics: const ClampingScrollPhysics(),
@@ -206,6 +217,10 @@ class _InspectionDetailsScreenState extends State<InspectionDetailsScreen> {
             ],
           ),
         ),
+        if (soIssuedAt != null) ...[
+          const SizedBox(height: 24),
+          _buildSanitaryOrderCard(),
+        ],
         const SizedBox(height: 24),
         const Text(
           'Checklist Results',
@@ -230,59 +245,6 @@ class _InspectionDetailsScreenState extends State<InspectionDetailsScreen> {
             return _buildCategorySection(entry.key, entry.value);
           }),
 
-        // [REF: SIGNATURE_DISPLAY]
-        // Rendered only when the log actually carries a signature: the field
-        // is additive (Chunk 7), so legacy logs simply have no key, and a
-        // placeholder for them would imply every old record is missing
-        // something it was never supposed to have. A queued log whose upload
-        // has not finished has no URL yet either — the signature appears here
-        // once the queue drains.
-        if (signatureUrl != null && signatureUrl.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          const Text(
-            "Inspector's Signature",
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: AppTheme.cardRadius,
-              boxShadow: AppTheme.softShadow,
-            ),
-            child: Image.network(
-              signatureUrl,
-              height: 120,
-              fit: BoxFit.contain,
-              loadingBuilder: (context, child, progress) => progress == null
-                  ? child
-                  : const SizedBox(
-                      height: 120,
-                      child: Center(child: CircularProgressIndicator()),
-                    ),
-              // Degrades to a quiet note rather than a broken-image glyph —
-              // a signature that fails to load offline is expected, not an
-              // error state worth alarming over.
-              errorBuilder: (context, error, stackTrace) => SizedBox(
-                height: 120,
-                child: Center(
-                  child: Text(
-                    'Signature could not be loaded.',
-                    style: TextStyle(
-                      color: Colors.grey.shade500,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
       ],
     );
   }
@@ -320,6 +282,129 @@ class _InspectionDetailsScreenState extends State<InspectionDetailsScreen> {
     );
   }
 
+  // [REF: SO_DETAILS_CARD]
+  /// The Sanitary Order's own facts, for whoever is reading the record.
+  ///
+  /// Not a reproduction of CHO-ESD-FR-04 — the printable form lives in the web
+  /// admin, and the signed paper is already in the recipient's hands. What is
+  /// here is the part with a consequence: how many items, by when.
+  Widget _buildSanitaryOrderCard() {
+    final soNo = _logData!['so_no'] as String?;
+    final timeGiven = _logData!['time_given'] as String?;
+    final deadline = _logData!['deadline'] as String?;
+    final receivedBy = _logData!['received_by_name'] as String?;
+    final results = (_logData!['results'] as List<dynamic>? ?? [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    final defects = SanitaryOrder.defectsFrom(results);
+
+    final due = deadline == null ? null : DateTime.tryParse(deadline);
+    final overdue = due != null &&
+        DateTime(due.year, due.month, due.day).isBefore(
+          DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
+        );
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: AppTheme.cardRadius,
+        border: Border.all(color: AppColors.fail.withValues(alpha: 0.30)),
+        boxShadow: AppTheme.softShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.gavel_rounded, size: 18, color: AppColors.fail),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  soNo == null
+                      ? 'Sanitary Order issued'
+                      : 'Sanitary Order No. $soNo',
+                  style: const TextStyle(
+                    fontFamily: '.SF Pro Display',
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textDisplay,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            defects.length == 1
+                ? '1 item must be corrected.'
+                : '${defects.length} items must be corrected.',
+            style: const TextStyle(
+              fontFamily: '.SF Pro Text',
+              fontSize: 13,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 14),
+          if (timeGiven != null && timeGiven.isNotEmpty)
+            _buildOrderRow('Time given', timeGiven, AppColors.textPrimary),
+          if (deadline != null)
+            _buildOrderRow(
+              'Deadline',
+              overdue ? '$deadline (passed)' : deadline,
+              overdue ? AppColors.fail : AppColors.textPrimary,
+            ),
+          if (receivedBy != null && receivedBy.isNotEmpty)
+            _buildOrderRow('Received by', receivedBy, AppColors.textPrimary),
+          const SizedBox(height: 4),
+          const Text(
+            'A re-inspection follows the deadline to check compliance.',
+            style: TextStyle(
+              fontFamily: '.SF Pro Text',
+              fontSize: 11,
+              height: 1.45,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOrderRow(String label, String value, Color valueColor) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 92,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontFamily: '.SF Pro Text',
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontFamily: '.SF Pro Text',
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: valueColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildCategorySection(String categoryName, List<Map<String, dynamic>> items) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -341,6 +426,22 @@ class _InspectionDetailsScreenState extends State<InspectionDetailsScreen> {
           final question = item['item_name'] as String? ?? 'Unknown Question';
           final status = item['answer'] as String? ?? 'N/A';
           final remarks = item['note'] as String?;
+          // The right-hand column of the Sanitary Order: what the
+          // establishment is ordered to do about this defect. Written since
+          // the order existed; absent on every log from before it, which is
+          // why it renders only when present rather than as an empty row.
+          final correction = item['correction'] as String?;
+          // The item's extra inputs (ChecklistField), label -> value. Lists
+          // are multi-selects; blanks were never filled and are not shown.
+          final values = ((item['values'] as Map?) ?? const {})
+              .entries
+              .where((e) => e.value is List
+                  ? (e.value as List).isNotEmpty
+                  : (e.value?.toString() ?? '').isNotEmpty)
+              .map((e) => MapEntry(
+                  e.key.toString(),
+                  e.value is List ? (e.value as List).join(', ') : e.value.toString()))
+              .toList();
 
           final color = _statusColor(status);
           final icon = _statusIcon(status);
@@ -394,6 +495,13 @@ class _InspectionDetailsScreenState extends State<InspectionDetailsScreen> {
                       ),
                     ],
                   ),
+                  for (final v in values)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text('${v.key}: ${v.value}',
+                          style: TextStyle(
+                              fontSize: 13, color: Colors.grey.shade700)),
+                    ),
                   if (remarks != null && remarks.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Text(
@@ -402,6 +510,55 @@ class _InspectionDetailsScreenState extends State<InspectionDetailsScreen> {
                         fontSize: 13,
                         color: Colors.grey.shade600,
                         fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
+                  // Set apart from the note rather than appended to it: one
+                  // is what is wrong, the other is what has to be done, and
+                  // on the order itself they are two separate columns.
+                  if (correction != null && correction.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppColors.brandSurface,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.build_circle_outlined,
+                              size: 15, color: AppColors.brandStrong),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'What to do',
+                                  style: TextStyle(
+                                    fontFamily: '.SF Pro Text',
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.4,
+                                    color: AppColors.brandStrong,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  correction,
+                                  style: const TextStyle(
+                                    fontFamily: '.SF Pro Text',
+                                    fontSize: 13,
+                                    height: 1.4,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
