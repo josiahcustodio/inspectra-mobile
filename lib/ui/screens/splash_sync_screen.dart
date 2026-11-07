@@ -19,6 +19,9 @@ class _SplashSyncScreenState extends State<SplashSyncScreen> {
   /// neither applies to them.
   bool _isOwner = false;
 
+  /// The role could not be read and the splash is parked: show a way out.
+  bool _roleFailed = false;
+
   @override
   void initState() {
     super.initState();
@@ -64,6 +67,7 @@ class _SplashSyncScreenState extends State<SplashSyncScreen> {
     // so beats a spinner that never resolves.
     if (role == null) {
       setState(() {
+        _roleFailed = true;
         _statusMessage =
             'Could not confirm your account. Connect to the internet once, '
             'then reopen the app.';
@@ -134,9 +138,10 @@ class _SplashSyncScreenState extends State<SplashSyncScreen> {
                 ),
               ),
               const SizedBox(height: 48),
-              const CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              ),
+              if (!_roleFailed)
+                const CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
               const SizedBox(height: 24),
               Text(
                 _statusMessage,
@@ -146,6 +151,27 @@ class _SplashSyncScreenState extends State<SplashSyncScreen> {
                   fontSize: 14,
                 ),
               ),
+              if (_roleFailed) ...[
+                const SizedBox(height: 24),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: AppColors.brandStrong,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _roleFailed = false;
+                      _statusMessage = 'Checking your account...';
+                    });
+                    _initializeApp();
+                  },
+                  child: const Text('Retry'),
+                ),
+                TextButton(
+                  onPressed: () => context.read<AuthProvider>().signOut(),
+                  child: const Text('Sign out', style: TextStyle(color: Colors.white)),
+                ),
+              ],
             ],
           ),
         ),

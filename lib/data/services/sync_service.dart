@@ -103,6 +103,17 @@ class SyncService {
 
   // ─── Inspection History ──────────────────────────────────────────────────────
 
+  /// Every server log for one establishment, newest first. The caller merges
+  /// the local queue.
+  static Future<List<Map<String, dynamic>>> fetchLogsForEstablishment(String establishmentId) async {
+    final List<dynamic> rows = await _db
+        .from('inspection_logs')
+        .select()
+        .eq('establishment_id', establishmentId)
+        .order('inspection_date', ascending: false);
+    return rows.cast<Map<String, dynamic>>();
+  }
+
   /// Fetches inspection logs, ordered newest first.
   /// Resolves establishment names by:
   ///   1. Using the name already stored on the log row (fast path).

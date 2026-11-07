@@ -206,7 +206,8 @@ class AuthProvider extends ChangeNotifier {
   Future<void> refreshMfaStatus() async {
     if (!isAuthenticated) return;
     _needsAal2 = MfaService.needsAal2Upgrade;
-    _hasTotpEnrolled = await MfaService.hasTotpEnrolled();
+    // Called right after enroll/reset, when the JWT is stale: ask the server.
+    _hasTotpEnrolled = await MfaService.hasTotpEnrolled(trustSession: false);
     notifyListeners();
   }
 

@@ -1,6 +1,8 @@
 import 'package:go_router/go_router.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/category_suggester.dart';
@@ -78,6 +80,11 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
   bool _issueOrder = true;
 
   bool _isSubmitting = false;
+
+  // [REF: PIN_LOCATION] Current pin, kept here because widget.establishment
+  // is the immutable record the screen was opened with.
+  double? _lat;
+  bool _pinning = false;
   bool _initialized = false;
 
   final ScrollController _scrollController = ScrollController();
@@ -97,6 +104,9 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
   @override
   void initState() {
     super.initState();
+    // From Hive, not widget.establishment: the list that opened this screen may
+    // predate a pin, and a stale null would skip the replace confirmation.
+    _lat = (OfflineService.getEstablishmentById(widget.establishment.id) ?? widget.establishment).latitude;
     _categoryOptions = OfflineService.getLocalCategoryOptions();
 
     // [REF: CATEGORY_SUGGESTION_SOURCE]
@@ -194,10 +204,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
     }
 
     final ratingProvider = Provider.of<RatingProvider>(context, listen: false);
-    final hasWork = ratingProvider.answers.isNotEmpty ||
-        ratingProvider.itemNotes.values.any((n) => n.trim().isNotEmpty);
-
-    if (hasWork) {
+    if (_hasWork(ratingProvider)) {
       final confirmed = await showDialog<bool>(
             context: context,
             builder: (dialogContext) => AlertDialog(
@@ -929,6 +936,83 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
     return ChecklistItemCard(key: ValueKey(item.id), item: item);
   }
 
+  // [REF: PIN_LOCATION]
+  Future<void> _pinLocation() async {
+    final perm = await Permission.locationWhenInUse.request();
+    if (!mounted) return;
+    if (!perm.isGranted) {
+      _gpsAdvice('Location permission is needed to pin this establishment.');
+      return;
+    }
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      if (mounted) _gpsAdvice('Location is turned off. Turn on GPS, then try again.');
+      return;
+    }
+    setState(() => _pinning = true);
+    Position pos;
+    try {
+      pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.best,
+          timeLimit: Duration(seconds: 25),
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        setState(() => _pinning = false);
+        _gpsAdvice('No GPS fix. Move to an open space, away from roofs and walls, then try again.');
+      }
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _pinning = false);
+    final acc = pos.accuracy.round();
+
+    if (acc > 100) {
+      final useAnyway = await _confirm(
+        'Weak GPS signal',
+        'The fix is only accurate to about $acc m. Move to an open space and try again, or use it anyway.',
+        'Use anyway',
+      );
+      if (useAnyway != true || !mounted) return;
+    }
+    if (_lat != null) {
+      final replace = await _confirm(
+        'Replace pinned location?',
+        'This establishment already has a map pin. Replace it with your current position (±$acc m)?',
+        'Replace',
+      );
+      if (replace != true || !mounted) return;
+    }
+
+    await OfflineService.pinLocation(widget.establishment.id, pos.latitude, pos.longitude);
+    if (!mounted) return;
+    setState(() => _lat = pos.latitude);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Location pinned (±$acc m). It now shows on the map.')),
+    );
+  }
+
+  void _gpsAdvice(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<bool?> _confirm(String title, String body, String yes) => showDialog<bool>(
+        context: context,
+        builder: (d) => AlertDialog(
+          title: Text(title),
+          content: Text(body),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(d).pop(false), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.of(d).pop(true), child: Text(yes)),
+          ],
+        ),
+      );
+
+  /// Anything the inspector would lose by leaving or switching checklist.
+  static bool _hasWork(RatingProvider p) =>
+      p.answers.isNotEmpty || p.itemNotes.values.any((n) => n.trim().isNotEmpty);
+
   @override
   Widget build(BuildContext context) {
     // Drives [REF: BANNER_KEYBOARD_YIELD] below. This has to be read HERE,
@@ -940,7 +1024,34 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
     // checklist this guard exists to prevent.
     final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
 
-    return Scaffold(
+    // canPop is always false so the check runs at back-press time without
+    // subscribing the whole screen to every answer tap.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final rating = Provider.of<RatingProvider>(context, listen: false);
+        if (!_hasWork(rating)) {
+          Navigator.of(context).pop();
+          return;
+        }
+        final leave = await showDialog<bool>(
+          context: context,
+          builder: (d) => AlertDialog(
+            title: const Text('Discard this inspection?'),
+            content: Text(
+              '${rating.answers.length} marked item(s) and any deficiency '
+              'notes will be lost.',
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(d).pop(false), child: const Text('Keep editing')),
+              TextButton(onPressed: () => Navigator.of(d).pop(true), child: const Text('Discard')),
+            ],
+          ),
+        );
+        if (leave == true && context.mounted) Navigator.of(context).pop();
+      },
+      child: Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         // Deliberately duplicates the banner's business name, because this
@@ -1000,6 +1111,23 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
                       children: [
                         const SizedBox(height: 16), // Padding before checklist starts
 
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                          child: OutlinedButton.icon(
+                            onPressed: _pinning ? null : _pinLocation,
+                            icon: _pinning
+                                ? const SizedBox(
+                                    width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                                : Icon(_lat == null
+                                    ? Icons.add_location_alt_outlined
+                                    : Icons.edit_location_alt_outlined),
+                            label: Text(_pinning
+                                ? 'Getting GPS fix…'
+                                : _lat == null
+                                    ? 'Pin GPS location here'
+                                    : 'Update pinned location'),
+                          ),
+                        ),
                         EstablishmentDetailsCard(
                           establishment: widget.establishment,
                         ),
@@ -1162,6 +1290,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
                   ),
                 ),
         ),
+      ),
       ),
     );
   }

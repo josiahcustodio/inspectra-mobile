@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/rating_scale.dart';
 import '../../core/theme/app_theme.dart';
@@ -9,6 +8,7 @@ import '../../providers/inspection_history_provider.dart';
 import '../widgets/new_inspection_modal.dart';
 import '../widgets/pending_card.dart';
 import '../widgets/stat_card.dart';
+import 'history_screen.dart' show openInspectionDetails;
 import 'main_navigation_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -62,29 +62,6 @@ class HomeScreen extends StatelessWidget {
             child: Text(
               'Inspector Dashboard',
               style: theme.textTheme.headlineMedium,
-            ),
-          ),
-          // Profile & settings live here now that the bottom bar's last slot
-          // is the Map tab.
-          Semantics(
-            button: true,
-            label: 'Profile and settings',
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: () => context.push('/profile'),
-              child: Container(
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.grey.shade200, width: 2),
-                ),
-                child: const CircleAvatar(
-                  radius: 20,
-                  backgroundColor: AppTheme.accent,
-                  foregroundColor: AppTheme.secondary,
-                  child: Icon(Icons.person, size: 24),
-                ),
-              ),
             ),
           ),
         ],
@@ -224,7 +201,7 @@ class HomeScreen extends StatelessWidget {
               Text('Recent Activity', style: theme.textTheme.titleLarge),
               TextButton(
                 onPressed: () {
-                  // History tab (branch order: 0 Home, 1 Establishments, 2 History, 3 Profile)
+                  // History tab (branch order: 0 Home, 1 Establishments, 2 History, 3 Profile, 4 Map)
                   MainNavigationScreen.tabNotifier.value = 2;
                 },
                 style: TextButton.styleFrom(
@@ -316,6 +293,7 @@ class HomeScreen extends StatelessWidget {
 
                     return ListTile(
                       contentPadding: const EdgeInsets.all(16),
+                      onTap: () => openInspectionDetails(context, log.id, name),
                       leading: Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(

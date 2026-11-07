@@ -68,3 +68,4 @@ ui-debug.log
 # Web dashboard lives in its own repo (inspectra-web)
 web-dashboard/
 bin/__pycache__/
+hs_err_pid*.log

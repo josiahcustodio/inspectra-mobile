@@ -29,7 +29,20 @@ class MfaService {
   static GoTrueClient get _auth => Supabase.instance.client.auth;
 
   /// True if the current user already has a verified TOTP factor.
-  static Future<bool> hasTotpEnrolled() async {
+  ///
+  /// [trustSession]: read the session JWT first. AAL2, or AAL1 with AAL2
+  /// reachable, both mean a verified factor exists, and this needs no network,
+  /// so an enrolled officer opening the app offline is not marched back into
+  /// enrollment. Pass false right after enrolling or unenrolling: the JWT still
+  /// describes the old state until it is refreshed.
+  static Future<bool> hasTotpEnrolled({bool trustSession = true}) async {
+    if (trustSession) {
+      if (needsAal2Upgrade) return true;
+      try {
+        final level = _auth.mfa.getAuthenticatorAssuranceLevel();
+        if (level.currentLevel == AuthenticatorAssuranceLevels.aal2) return true;
+      } catch (_) {}
+    }
     try {
       final res = await _auth.mfa.listFactors();
       return res.totp.any((f) => f.status == FactorStatus.verified);

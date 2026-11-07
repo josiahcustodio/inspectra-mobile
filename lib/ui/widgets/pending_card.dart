@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -53,7 +54,8 @@ class PendingCard extends StatelessWidget {
                       width: 48, // Reduced from 64
                       height: 48,
                       child: CircularProgressIndicator(
-                        value: provider.isEmpty ? 0 : 0.65,
+                        // Spins while syncing; otherwise a plain ring around the count.
+                        value: provider.isSyncing ? null : (provider.isEmpty ? 0 : 1),
                         backgroundColor: Colors.grey.shade100,
                         color: AppTheme.primary,
                         strokeWidth: 5,
@@ -186,10 +188,18 @@ class PendingCard extends StatelessWidget {
                             final entry = provider.pendingItems[index];
                             final String key = entry.key;
                             final isSyncingThis = provider.isItemSyncing(key);
+                            Map<String, dynamic> data = const {};
+                            try {
+                              data = jsonDecode(entry.value) as Map<String, dynamic>;
+                            } catch (_) {} // old or truncated row: fall back to generic labels
+                            final name = (data['establishment_name'] as String?)?.trim();
+                            final date = (data['inspection_date'] as String? ?? '').split('T').first;
 
                             return ListTile(
                               leading: const CircleAvatar(child: Icon(Icons.assignment_late)),
-                              title: Text('Inspection: $key'),
+                              title: Text(name == null || name.isEmpty ? 'Inspection' : name,
+                                  maxLines: 1, overflow: TextOverflow.ellipsis),
+                              subtitle: date.isEmpty ? null : Text(date),
                               trailing: isSyncingThis
                                   ? const SizedBox(
                                       width: 24,

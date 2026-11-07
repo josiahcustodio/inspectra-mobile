@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -75,6 +78,63 @@ class OfflineService {
 
   static Future<void> writePref(String key, String value) async {
     await _prefsBox.put(key, value);
+  }
+
+  // ─── Pinned coordinates ─────────────────────────────────────────────────────
+  // [REF: PIN_LOCATION]
+  // The one establishment write mobile makes (D2 removed the rest): the
+  // inspector standing at the business is the only person who can say where
+  // it is. The Hive mirror is updated at once so the map shows the pin
+  // offline; the server write is queued under `pin:<id>` in prefs and drained
+  // here and at the start of every syncData().
+  static String _pinKey(String id) => 'pin:$id';
+
+  static Future<void> pinLocation(String id, double lat, double lng) async {
+    final box = Hive.box<Establishment>(establishmentsBoxName);
+    final est = box.get(id);
+    if (est != null) await box.put(id, est.withLocation(lat, lng));
+    await _prefsBox.put(_pinKey(id), jsonEncode({'latitude': lat, 'longitude': lng}));
+    // Not awaited: the inspector gets their confirmation from the local write;
+    // a slow link must not hold the form or invite a second tap.
+    unawaited(_drainPins());
+  }
+
+  static bool _draining = false;
+
+  /// Sends queued pins. A server rejection (RLS, bad id, bad JSON) drops that
+  /// pin and moves on; anything else is treated as no network and stops the
+  /// pass, keeping every key for next time.
+  static Future<void> _drainPins() async {
+    if (_draining) return;
+    _draining = true;
+    try {
+      final keys = _prefsBox.keys.where((k) => k.toString().startsWith('pin:')).toList();
+      for (final key in keys) {
+        final id = key.toString().substring(4);
+        try {
+          final coords = jsonDecode(_prefsBox.get(key)!) as Map<String, dynamic>;
+          // select(): without it a row RLS hides is a silent 204, not an error.
+          final List<dynamic> rows = await Supabase.instance.client
+              .from('establishments')
+              .update(coords)
+              .eq('id', id)
+              .select('id');
+          if (rows.isEmpty) debugPrint('pin for $id rejected: no row updated (RLS or deleted)');
+          await _prefsBox.delete(key);
+        } on PostgrestException catch (e) {
+          debugPrint('pin for $id rejected by server, dropping: ${e.message}');
+          await _prefsBox.delete(key);
+        } on FormatException catch (e) {
+          debugPrint('pin for $id unreadable, dropping: $e');
+          await _prefsBox.delete(key);
+        } catch (e) {
+          debugPrint('pin for $id not sent yet (offline?): $e');
+          return;
+        }
+      }
+    } finally {
+      _draining = false;
+    }
   }
 
   /// Fetches every row of [table], paging past PostgREST's max-rows cap
@@ -159,6 +219,8 @@ class OfflineService {
       }
 
       // ── 2. Sync establishments ────────────────────────────────────────────
+      // Pins first, so the refill below reads them back from the server.
+      await _drainPins();
       final establishmentRows = await _fetchAllRows('establishments');
       final estBox = Hive.box<Establishment>(establishmentsBoxName);
 

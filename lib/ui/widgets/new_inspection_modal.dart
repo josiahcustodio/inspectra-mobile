@@ -103,7 +103,7 @@ class _NewInspectionModalState extends State<NewInspectionModal> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Search by Establishment Name, ID, or scan a QR code.',
+              'Search by establishment name or ID.',
               style: TextStyle(
                 fontFamily: '.SF Pro Text',
                 fontSize: 14,
@@ -232,53 +232,6 @@ class _NewInspectionModalState extends State<NewInspectionModal> {
                   ],
                 ),
               ),
-            ..._suggestions.isEmpty
-                ? [
-                    const Row(
-                      children: [
-                        Expanded(child: Divider(color: AppTheme.border)),
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 16),
-                          child: Text(
-                            'OR',
-                            style: TextStyle(
-                              fontFamily: '.SF Pro Text',
-                              color: AppTheme.textSecondary,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                        Expanded(child: Divider(color: AppTheme.border)),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 56,
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          context.pop();
-                          context.push('/qr');
-                        },
-                        icon: const Icon(CupertinoIcons.qrcode_viewfinder),
-                        label: const Text('Scan QR Code'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: widget.theme.colorScheme.primary,
-                          side: BorderSide(color: widget.theme.colorScheme.primary),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          textStyle: const TextStyle(
-                            fontFamily: '.SF Pro Display',
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ]
-                : [],
             const SizedBox(height: 24),
           ],
         ),

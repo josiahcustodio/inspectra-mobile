@@ -5,7 +5,6 @@ import '../../providers/auth_provider.dart';
 import '../../ui/screens/login_screen.dart';
 import '../../ui/screens/splash_sync_screen.dart';
 import '../../ui/screens/main_navigation_screen.dart';
-import '../../ui/screens/qr_scanner_screen.dart';
 import '../../ui/screens/mfa_enroll_screen.dart';
 import '../../ui/screens/mfa_verify_screen.dart';
 import '../../ui/screens/verify_email_screen.dart';
@@ -26,6 +25,7 @@ final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>(de
 final GlobalKey<NavigatorState> _shellNavigatorHomeKey = GlobalKey<NavigatorState>(debugLabel: 'shellHome');
 final GlobalKey<NavigatorState> _shellNavigatorEstablishmentsKey = GlobalKey<NavigatorState>(debugLabel: 'shellEst');
 final GlobalKey<NavigatorState> _shellNavigatorHistoryKey = GlobalKey<NavigatorState>(debugLabel: 'shellHist');
+final GlobalKey<NavigatorState> _shellNavigatorProfileKey = GlobalKey<NavigatorState>(debugLabel: 'shellProfile');
 final GlobalKey<NavigatorState> _shellNavigatorMapKey = GlobalKey<NavigatorState>(debugLabel: 'shellMap');
 
 GoRouter createAppRouter(AuthProvider authProvider) {
@@ -170,17 +170,13 @@ GoRouter createAppRouter(AuthProvider authProvider) {
         builder: (context, state) => const MfaVerifyScreen(),
       ),
       GoRoute(
-        path: '/qr',
-        parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const QRScannerScreen(),
-      ),
-      GoRoute(
         path: '/pending-approval',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const PendingApprovalScreen(),
       ),
-      // Outside the StatefulShellRoute on purpose: the four-tab inspector
-      // shell (Home / Establishments / History / Map) has nothing an
+      // Outside the StatefulShellRoute on purpose: the inspector shell
+      // (Home / Establishments / History / Profile, Map on the centre button)
+      // has nothing an
       // owner is allowed to open, so they get a single screen rather than a
       // shell with three dead branches.
       GoRoute(
@@ -191,13 +187,6 @@ GoRouter createAppRouter(AuthProvider authProvider) {
       // No /establishments/add or /establishments/edit route: the web admin is
       // the sole owner of establishment data, so there is nowhere on mobile to
       // navigate for a create or an edit.
-      // Profile left the bottom bar for the Map tab; it opens from the avatar
-      // at the top right of Home.
-      GoRoute(
-        path: '/profile',
-        parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const ProfileScreen(),
-      ),
       GoRoute(
         path: '/inspection',
         parentNavigatorKey: _rootNavigatorKey,
@@ -252,6 +241,16 @@ GoRouter createAppRouter(AuthProvider authProvider) {
               ),
             ],
           ),
+          StatefulShellBranch(
+            navigatorKey: _shellNavigatorProfileKey,
+            routes: <RouteBase>[
+              GoRoute(
+                path: '/profile',
+                builder: (context, state) => const ProfileScreen(),
+              ),
+            ],
+          ),
+          // Index 4: not a bar slot, reached from the centre button.
           StatefulShellBranch(
             navigatorKey: _shellNavigatorMapKey,
             routes: <RouteBase>[

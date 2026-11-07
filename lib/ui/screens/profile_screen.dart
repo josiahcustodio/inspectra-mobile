@@ -188,7 +188,7 @@ class ProfileScreen extends StatelessWidget {
             const SizedBox(height: 8),
             _accountRow(Icons.badge_outlined, 'Department', 'City Health Office'),
             const SizedBox(height: 8),
-            _accountRow(Icons.verified_user_outlined, 'Role', 'Field Inspector'),
+            _accountRow(Icons.verified_user_outlined, 'Role', _roleLabel(context)),
           ],
         ),
         actions: [
@@ -216,12 +216,17 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  // ─── Settings Dialog ─────────────────────────────────────────────────────────
-  void _showSettings(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => const _SettingsDialog(),
-    );
+  String _roleLabel(BuildContext context) {
+    switch (context.read<AuthProvider>().role) {
+      case 'admin':
+        return 'Administrator';
+      case 'department_head':
+        return 'Department Head';
+      case 'owner':
+        return 'Establishment Owner';
+      default:
+        return 'Field Inspector';
+    }
   }
 
   // ─── Help & Support Dialog ───────────────────────────────────────────────────
@@ -230,12 +235,12 @@ class ProfileScreen extends StatelessWidget {
       {
         'q': 'How do I start a new inspection?',
         'a':
-            'Tap the green "New Inspection" button on the Home screen, then search for the establishment by name or scan its QR code.',
+            'Tap "New Inspection" on the Home screen, then search for the establishment by name or ID.',
       },
       {
         'q': 'What happens when I submit offline?',
         'a':
-            'The inspection is saved locally on your device. It will automatically sync to the server the next time you have an internet connection. You can also manually sync from the Pending card on the Home screen.',
+            'The inspection is saved on your device. When you are back online, tap Sync Now or Submit All on the Pending card of the Home screen to send it.',
       },
       {
         'q': 'How is the rating score calculated?',
@@ -325,7 +330,7 @@ class ProfileScreen extends StatelessWidget {
     final photoUrl = AuthService.photoUrl;
 
     return Scaffold(
-      // Pushed over the tabs (not a tab itself), so the bar supplies the back arrow.
+      // A bottom tab again, so no back arrow appears: the branch has no history.
       appBar: AppBar(title: const Text('Profile'), backgroundColor: Colors.transparent, elevation: 0),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -367,11 +372,6 @@ class ProfileScreen extends StatelessWidget {
                 label: 'Two-Factor Authentication',
                 subtitle: authProvider.hasTotpEnrolled == true ? 'Enabled' : 'Setting up…',
                 onTap: () => _showMfaSheet(context, authProvider),
-              ),
-              _ProfileTile(
-                icon: Icons.settings_outlined,
-                label: 'Settings',
-                onTap: () => _showSettings(context),
               ),
               _ProfileTile(
                 icon: Icons.help_outline_rounded,
@@ -417,110 +417,6 @@ class ProfileScreen extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-// ─── Settings Dialog Widget ───────────────────────────────────────────────────
-
-class _SettingsDialog extends StatefulWidget {
-  const _SettingsDialog();
-
-  @override
-  State<_SettingsDialog> createState() => _SettingsDialogState();
-}
-
-class _SettingsDialogState extends State<_SettingsDialog> {
-  bool _notificationsEnabled = true;
-  bool _soundEnabled = false;
-  bool _autoSync = true;
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: const Row(
-        children: [
-          Icon(Icons.settings_outlined, color: AppColors.brand, size: 22),
-          SizedBox(width: 10),
-          Text('Settings',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        ],
-      ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _SettingsTile(
-            label: 'Push Notifications',
-            subtitle: 'Receive sync and update alerts',
-            value: _notificationsEnabled,
-            onChanged: (val) => setState(() => _notificationsEnabled = val),
-          ),
-          const Divider(height: 1),
-          _SettingsTile(
-            label: 'Sound',
-            subtitle: 'Play sounds on submission',
-            value: _soundEnabled,
-            onChanged: (val) => setState(() => _soundEnabled = val),
-          ),
-          const Divider(height: 1),
-          _SettingsTile(
-            label: 'Auto-Sync',
-            subtitle: 'Sync pending items automatically',
-            value: _autoSync,
-            onChanged: (val) => setState(() => _autoSync = val),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Done'),
-        ),
-      ],
-    );
-  }
-}
-
-class _SettingsTile extends StatelessWidget {
-  final String label;
-  final String subtitle;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  const _SettingsTile({
-    required this.label,
-    required this.subtitle,
-    required this.value,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 14,
-                        color: AppColors.textDisplay)),
-                Text(subtitle,
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
-              ],
-            ),
-          ),
-          Switch(
-            value: value,
-            onChanged: onChanged,
-            activeThumbColor: AppColors.brand,
-          ),
-        ],
       ),
     );
   }

@@ -3,12 +3,35 @@ import 'package:flutter/foundation.dart';
 import '../data/models/inspection_log.dart';
 import '../data/services/offline_service.dart';
 import '../data/services/sync_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class InspectionHistoryProvider extends ChangeNotifier {
   List<InspectionLog> _logs = [];
   List<String> _establishmentNames = [];
   bool _isLoading = false;
   String? _error;
+
+  InspectionHistoryProvider() {
+    // Supabase.instance throws before initialize(); tests build this provider
+    // bare, and they have no session to clear anyway.
+    try {
+      Supabase.instance.client.auth.onAuthStateChange.listen((s) {
+        if (s.event == AuthChangeEvent.signedOut) clear();
+      });
+    } catch (_) {}
+  }
+
+  /// Bumped by clear(); a fetch started before the bump drops its result.
+  int _generation = 0;
+
+  void clear() {
+    _generation++;
+    _isLoading = false; // a fetch still in flight will drop its result
+    _logs = [];
+    _establishmentNames = [];
+    _error = null;
+    notifyListeners();
+  }
 
   List<InspectionLog> get logs => _logs;
   List<String> get establishmentNames => _establishmentNames;
@@ -40,6 +63,7 @@ class InspectionHistoryProvider extends ChangeNotifier {
     bool includeLocalQueue = true,
   }) async {
     if (_isLoading) return;
+    final generation = _generation;
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -69,6 +93,10 @@ class InspectionHistoryProvider extends ChangeNotifier {
               }
               return data;
             }).toList();
+
+      // Signed out while the request was out: these rows belong to the
+      // previous user, so leave the cleared state alone.
+      if (generation != _generation) return;
 
       final combinedRaw = [...localLogs, ...rawRemote];
 

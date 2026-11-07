@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/rating_scale.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/inspection_log.dart';
+import '../../data/services/offline_service.dart';
 import '../../providers/inspection_history_provider.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -49,7 +50,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     return const Center(child: CircularProgressIndicator());
                   }
 
-                  if (provider.error != null) {
+                  if (provider.error != null && provider.isEmpty) {
                     return _ErrorState(
                       message: provider.error!,
                       onRetry: () => provider.refresh(),
@@ -60,19 +61,39 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     return _EmptyState(primary: primary);
                   }
 
-                  return RefreshIndicator(
-                    color: primary,
-                    onRefresh: provider.refresh,
-                    child: ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                      itemCount: provider.logs.length,
-                      itemBuilder: (context, index) {
-                        return _HistoryCard(
-                          log: provider.logs[index],
-                          establishmentName: provider.nameAt(index),
-                        );
-                      },
-                    ),
+                  return Column(
+                    children: [
+                      if (provider.error != null)
+                        Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade50,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            provider.error!,
+                            style: TextStyle(color: Colors.orange.shade900, fontSize: 13),
+                          ),
+                        ),
+                      Expanded(
+                        child: RefreshIndicator(
+                          color: primary,
+                          onRefresh: provider.refresh,
+                          child: ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                            itemCount: provider.logs.length,
+                            itemBuilder: (context, index) {
+                              return _HistoryCard(
+                                log: provider.logs[index],
+                                establishmentName: provider.nameAt(index),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
                   );
                 },
               ),
@@ -82,6 +103,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ),
     );
   }
+}
+
+/// Details are read from the server, so a log still waiting in the local
+/// queue has nothing to show yet; say so instead of opening an error page.
+void openInspectionDetails(BuildContext context, String logId, String establishmentName) {
+  if (OfflineService.inspectionsQueueBox.containsKey(logId)) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Not synced yet. Submit it from the Pending card on Home first.'),
+    ));
+    return;
+  }
+  context.push('/inspection/details/$logId', extra: establishmentName);
 }
 
 // ─── History Card ─────────────────────────────────────────────────────────────
@@ -130,12 +163,7 @@ class _HistoryCard extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: AppTheme.cardRadius,
-          onTap: () {
-            context.push(
-              '/inspection/details/${log.id}',
-              extra: establishmentName,
-            );
-          },
+          onTap: () => openInspectionDetails(context, log.id, establishmentName),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(

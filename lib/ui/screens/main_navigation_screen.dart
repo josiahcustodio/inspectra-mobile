@@ -52,18 +52,21 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final mapActive = widget.navigationShell.currentIndex == 4;
     return Scaffold(
       extendBody: true, // Required for bottom app bar notch
       body: widget.navigationShell,
+      // The map is the centrepiece, so it owns the centre button instead of a
+      // bar slot. It stays a shell branch (index 4) so MapLibre keeps its
+      // camera and tiles when the inspector switches tabs.
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          context.push('/qr');
-        },
-        backgroundColor: AppTheme.primary,
+        onPressed: () => _onTap(4),
+        tooltip: 'Map',
+        backgroundColor: mapActive ? AppTheme.secondary : AppTheme.primary,
         foregroundColor: Colors.white,
-        elevation: 4,
+        elevation: mapActive ? 8 : 4,
         shape: const CircleBorder(),
-        child: const Icon(Icons.qr_code_scanner, size: 28),
+        child: Icon(mapActive ? Icons.map_rounded : Icons.map_outlined, size: 28),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       bottomNavigationBar: _BottomNav(
@@ -106,7 +109,7 @@ class _BottomNav extends StatelessWidget {
                   _buildTab(1, Icons.business_outlined, Icons.business_rounded, 'Establishments'),
                   const SizedBox(width: 48), // Space for FAB
                   _buildTab(2, Icons.history_outlined, Icons.history_rounded, 'History'),
-                  _buildTab(3, Icons.map_outlined, Icons.map_rounded, 'Map'),
+                  _buildTab(3, Icons.person_outline_rounded, Icons.person_rounded, 'Profile'),
                 ],
               ),
             ),

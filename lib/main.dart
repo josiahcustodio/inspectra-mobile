@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
@@ -24,7 +25,9 @@ void main() async {
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Text(
-                'UI CRASH:\n${details.exception}\n\n${details.stack}',
+                kDebugMode
+                    ? 'UI CRASH:\n${details.exception}\n\n${details.stack}'
+                    : 'Something went wrong. Please restart the app.',
                 style: const TextStyle(color: Colors.red, fontSize: 12),
               ),
             ),
@@ -62,7 +65,9 @@ void main() async {
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Text(
-                'STARTUP CRASH:\n$e\n\n$stack',
+                kDebugMode
+                    ? 'STARTUP CRASH:\n$e\n\n$stack'
+                    : 'The app could not start. Please restart it.',
                 style: const TextStyle(color: Colors.red, fontSize: 12),
               ),
             ),

@@ -1,10 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../data/models/establishment.dart';
 import '../../data/services/offline_service.dart';
+import '../widgets/establishment_sheet.dart';
 
 // [REF: FIELD_MAP]
 //
@@ -39,21 +42,72 @@ class _MapScreenState extends State<MapScreen> {
   List<Establishment> _pinned = const [];
   String _query = '';
   final _searchController = TextEditingController();
+  StreamSubscription<BoxEvent>? _boxSub;
+  Timer? _reloadDebounce;
 
   @override
   void initState() {
     super.initState();
-    // shortcut: read once; the tab stays alive in the shell, so a sync that
-    // lands later shows on the map after an app restart. Re-read on tab focus
-    // when inspectors notice.
     _all = OfflineService.getLocalEstablishments();
     _pinned = _all.where((e) => e.hasLocation).toList();
+    // A sync writes thousands of rows and a pin writes one; both land on the
+    // map through this, debounced so the sync redraws once.
+    _boxSub = Hive.box<Establishment>(OfflineService.establishmentsBoxName).watch().listen((_) {
+      _reloadDebounce?.cancel();
+      _reloadDebounce = Timer(const Duration(milliseconds: 600), _reloadPins);
+    });
     Permission.locationWhenInUse.request().then((s) {
       if (mounted) setState(() => _locationGranted = s.isGranted);
     });
     getListOfRegions().then((regions) {
       if (mounted) setState(() => _offlineReady = regions.isNotEmpty);
     }).catchError((_) {});
+  }
+
+  bool _reloading = false;
+  bool _reloadQueued = false;
+
+  /// One redraw at a time: overlapping clear/add pairs leave duplicate pins.
+  Future<void> _reloadPins() async {
+    if (_reloading) {
+      _reloadQueued = true;
+      return;
+    }
+    _reloading = true;
+    try {
+      if (!mounted) return;
+      setState(() {
+        _all = OfflineService.getLocalEstablishments();
+        _pinned = _all.where((e) => e.hasLocation).toList();
+      });
+      await _controller?.clearCircles();
+      await _addPins();
+    } catch (e) {
+      debugPrint('pin redraw failed: $e');
+    } finally {
+      _reloading = false;
+    }
+    if (_reloadQueued) {
+      _reloadQueued = false;
+      await _reloadPins();
+    }
+  }
+
+  /// Pans to the GPS dot. Tracking is off (see the map options), so the camera
+  /// only moves when the inspector asks.
+  Future<void> _recenter() async {
+    LatLng? here;
+    try {
+      here = await _controller?.requestMyLocationLatLng();
+      if (here != null) await _controller?.animateCamera(CameraUpdate.newLatLngZoom(here, 16));
+    } catch (_) {
+      here = null; // style still loading or location component not up yet
+    }
+    if (here == null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No GPS fix yet. Move to an open space and try again.')),
+      );
+    }
   }
 
   Future<void> _addPins() async {
@@ -76,6 +130,8 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   void dispose() {
+    _boxSub?.cancel();
+    _reloadDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -108,44 +164,14 @@ class _MapScreenState extends State<MapScreen> {
     await _controller?.animateCamera(
       CameraUpdate.newLatLngZoom(LatLng(est.latitude!, est.longitude!), 17),
     );
-    if (mounted) _showSheet(est);
+    if (mounted) showEstablishmentSheet(context, est);
   }
 
   void _onPinTapped(Circle circle) {
     final id = circle.data?['id'];
     final est = _pinned.cast<Establishment?>().firstWhere((e) => e!.id == id, orElse: () => null);
     if (est == null) return;
-    _showSheet(est);
-  }
-
-  void _showSheet(Establishment est) {
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(est.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            Text(est.fullAddress, style: TextStyle(color: Colors.grey.shade700)),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  // Same entry point as the establishments list.
-                  context.push('/inspection', extra: est);
-                },
-                child: const Text('Start inspection'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    showEstablishmentSheet(context, est);
   }
 
   Future<void> _saveOffline() async {
@@ -209,8 +235,10 @@ class _MapScreenState extends State<MapScreen> {
             styleString: _style,
             initialCameraPosition: const CameraPosition(target: _cityCenter, zoom: 12),
             myLocationEnabled: _locationGranted,
-            myLocationTrackingMode:
-                _locationGranted ? MyLocationTrackingMode.trackingCompass : MyLocationTrackingMode.none,
+            // Never track: a tracking camera snaps back to the GPS dot after
+            // every pan and every animateCamera() to a pin, which read as the
+            // map "bouncing". The locate button below pans on request instead.
+            myLocationTrackingMode: MyLocationTrackingMode.none,
             myLocationRenderMode:
                 _locationGranted ? MyLocationRenderMode.compass : MyLocationRenderMode.normal,
             onMapCreated: (c) {
@@ -276,11 +304,24 @@ class _MapScreenState extends State<MapScreen> {
               ],
             ),
           ),
+          if (_locationGranted)
+            Positioned(
+              right: 16,
+              bottom: 16 + MediaQuery.paddingOf(context).bottom,
+              child: FloatingActionButton.small(
+                heroTag: 'map-locate',
+                tooltip: 'My location',
+                onPressed: _recenter,
+                child: const Icon(Icons.my_location),
+              ),
+            ),
           if (_pinned.isEmpty)
             Positioned(
               left: 16,
-              right: 16,
-              bottom: 16,
+              right: 72,
+              // The shell extends the body under its bar; Scaffold reports the
+              // bar height as bottom padding here.
+              bottom: 16 + MediaQuery.paddingOf(context).bottom,
               child: Material(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),

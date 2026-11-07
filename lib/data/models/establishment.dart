@@ -121,6 +121,34 @@ class Establishment extends HiveObject {
     this.longitude,
   }) : id = (id == null || id.isEmpty) ? const Uuid().v4() : id;
 
+  /// The same record with a new pin. Every other field is copied, because
+  /// Hive stores whole objects and the web admin owns the rest of them.
+  Establishment withLocation(double lat, double lng) => Establishment(
+        id: id,
+        name: name,
+        category: category,
+        address: address,
+        ownerName: ownerName,
+        personnelCount: personnelCount,
+        personnelWithHc: personnelWithHc,
+        sanitaryPermitNo: sanitaryPermitNo,
+        controlNo: controlNo,
+        barangay: barangay,
+        categoryId: categoryId,
+        isSynced: isSynced,
+        createdAt: createdAt,
+        qrCodeId: qrCodeId,
+        businessPermitNo: businessPermitNo,
+        applicType: applicType,
+        permitDateIssued: permitDateIssued,
+        lineOfBusiness: lineOfBusiness,
+        floorAreaSqm: floorAreaSqm,
+        telNo: telNo,
+        tin: tin,
+        latitude: lat,
+        longitude: lng,
+      );
+
   String get formattedAddress {
     try {
       if (address.trim().startsWith('{')) {
