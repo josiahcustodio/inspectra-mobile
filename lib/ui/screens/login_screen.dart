@@ -445,12 +445,8 @@ class _LoginScreenState extends State<LoginScreen> {
   /// and leaving a live credential sitting in an inbox.
   ///
   /// The step always advances after "Send code", whatever the server said.
-  /// GoTrue answers an unknown address with `otp_disabled` when
-  /// shouldCreateUser is false, so reporting that faithfully would turn this
-  /// dialog into a way to test whether a particular business owner has an
-  /// account here. Only connectivity failures and rate limits are surfaced: the
-  /// user can act on both, and neither says anything about the address.
-  /// Everything else gets the same neutral sentence.
+  /// Only connectivity failures and rate limits are surfaced: the user can
+  /// act on both. Everything else gets the same neutral sentence.
   void _showOwnerSignInDialog(BuildContext context) {
     final emailController = TextEditingController(text: _emailController.text);
     final codeController = TextEditingController();
@@ -549,9 +545,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   if (!ctx.mounted) return;
                   setDialogState(() {
                     busy = false;
-                    inlineError =
-                        'That address belongs to a City Health Office staff '
-                        'account. Sign in with your email and password above.';
+                    // 'pending': the code created a fresh account, but no
+                    // inspector has recorded this address on an establishment.
+                    inlineError = role == 'pending'
+                        ? 'No establishment is registered to this address yet. '
+                            'Ask your inspector to record it on the next inspection.'
+                        : 'That address belongs to a City Health Office staff '
+                            'account. Sign in with your email and password above.';
                   });
                   return;
                 }

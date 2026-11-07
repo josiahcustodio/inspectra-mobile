@@ -121,33 +121,15 @@ class AuthService {
   // [REF: OWNER_OTP_SIGNIN]
   /// Mails a six-digit code to an establishment's point person.
   ///
-  /// `shouldCreateUser: false` stops this path from CREATING accounts. Left at
-  /// its default of true, anyone who typed an address into the owner dialog
-  /// would mint themselves one — so only addresses an admin has already
-  /// provisioned (see the provision-owner function) can receive a code.
-  ///
-  /// It does NOT make the path owner-only, and it must not be read that way:
-  /// a code is mailed to ANY existing account, staff included, so on its own
-  /// this would be a passwordless sign-in for the whole project. The dialog
-  /// closes that by checking the role once the session exists and signing a
-  /// non-owner straight back out — see the owner sign-in dialog in
-  /// login_screen.dart. (Mailbox access already implied account takeover via
-  /// the password-reset link, so this is not a new exposure; it is still not
-  /// a door worth leaving wider than it has to be.)
-  /// Note that GoTrue does NOT hide the outcome: with shouldCreateUser false
-  /// an unknown address comes back as an `otp_disabled` error, which would
-  /// turn this dialog into a way to test whether a given business owner has an
-  /// account. Hiding that is the caller's job — see the owner sign-in dialog
-  /// in login_screen.dart, which advances to the code step either way and only
-  /// surfaces genuine connectivity failures.
-  ///
-  /// There is no password anywhere in this flow. A generated temporary
-  /// password would have made the mailbox the real credential anyway, while
-  /// adding a forced-change screen, a reset path and a lockout policy to
-  /// maintain — and leaving a live credential sitting in an inbox.
+  /// `shouldCreateUser: true`: the first code CREATES the account, and the
+  /// profiles trigger (10_auto_owner.sql) makes it an owner if an inspector
+  /// has recorded that address on an establishment. Anyone can mint a
+  /// 'pending' account this way; it can read nothing, and the owner dialog in
+  /// login_screen.dart signs a non-owner straight back out. There is no
+  /// password anywhere in this flow: the mailbox is the credential.
   static Future<void> sendOwnerOtp(String email) async {
     try {
-      await _auth.signInWithOtp(email: email, shouldCreateUser: false);
+      await _auth.signInWithOtp(email: email, shouldCreateUser: true);
     } on AuthException catch (e) {
       debugPrint('sendOwnerOtp AuthException: ${e.code} ${e.message}');
       throw _friendlyAuthError(e);
