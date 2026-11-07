@@ -99,41 +99,46 @@ class OfflineService {
     unawaited(_drainPins());
   }
 
-  static bool _draining = false;
+  static Future<void>? _draining;
+
+  /// One pass at a time; a second caller (syncData) awaits the running one, so
+  /// its establishment refill cannot read back a row the pin has not reached.
+  static Future<void> _drainPins() =>
+      _draining ??= _drainPinsOnce().whenComplete(() => _draining = null);
 
   /// Sends queued pins. A server rejection (RLS, bad id, bad JSON) drops that
   /// pin and moves on; anything else is treated as no network and stops the
   /// pass, keeping every key for next time.
-  static Future<void> _drainPins() async {
-    if (_draining) return;
-    _draining = true;
-    try {
-      final keys = _prefsBox.keys.where((k) => k.toString().startsWith('pin:')).toList();
-      for (final key in keys) {
-        final id = key.toString().substring(4);
-        try {
-          final coords = jsonDecode(_prefsBox.get(key)!) as Map<String, dynamic>;
-          // select(): without it a row RLS hides is a silent 204, not an error.
-          final List<dynamic> rows = await Supabase.instance.client
-              .from('establishments')
-              .update(coords)
-              .eq('id', id)
-              .select('id');
-          if (rows.isEmpty) debugPrint('pin for $id rejected: no row updated (RLS or deleted)');
-          await _prefsBox.delete(key);
-        } on PostgrestException catch (e) {
-          debugPrint('pin for $id rejected by server, dropping: ${e.message}');
-          await _prefsBox.delete(key);
-        } on FormatException catch (e) {
-          debugPrint('pin for $id unreadable, dropping: $e');
-          await _prefsBox.delete(key);
-        } catch (e) {
-          debugPrint('pin for $id not sent yet (offline?): $e');
+  static Future<void> _drainPinsOnce() async {
+    final keys = _prefsBox.keys.where((k) => k.toString().startsWith('pin:')).toList();
+    for (final key in keys) {
+      final id = key.toString().substring(4);
+      try {
+        final coords = jsonDecode(_prefsBox.get(key)!) as Map<String, dynamic>;
+        // select(): without it a row RLS hides is a silent 204, not an error.
+        final List<dynamic> rows = await Supabase.instance.client
+            .from('establishments')
+            .update(coords)
+            .eq('id', id)
+            .select('id');
+        if (rows.isEmpty) debugPrint('pin for $id rejected: no row updated (RLS or deleted)');
+        await _prefsBox.delete(key);
+      } on PostgrestException catch (e) {
+        // 5xx, 429 and JWT errors (PGRST30x) are the server's problem, not the pin's.
+        final status = int.tryParse(e.code ?? '') ?? 0;
+        if (status >= 500 || status == 429 || (e.code?.startsWith('PGRST30') ?? false)) {
+          debugPrint('pin for $id not sent yet (server ${e.code}): ${e.message}');
           return;
         }
+        debugPrint('pin for $id rejected by server, dropping: ${e.message}');
+        await _prefsBox.delete(key);
+      } on FormatException catch (e) {
+        debugPrint('pin for $id unreadable, dropping: $e');
+        await _prefsBox.delete(key);
+      } catch (e) {
+        debugPrint('pin for $id not sent yet (offline?): $e');
+        return;
       }
-    } finally {
-      _draining = false;
     }
   }
 

@@ -70,11 +70,12 @@ class InspectionHistoryProvider extends ChangeNotifier {
 
     try {
       List<Map<String, dynamic>> rawRemote = [];
+      String? remoteError;
       try {
         rawRemote = await SyncService.fetchInspectionHistory(limit: limit);
       } catch (e) {
         debugPrint('Failed to fetch remote history: $e');
-        _error = 'Showing offline and cached logs only.';
+        remoteError = 'Showing offline and cached logs only.';
       }
 
       final localLogs = !includeLocalQueue
@@ -97,6 +98,7 @@ class InspectionHistoryProvider extends ChangeNotifier {
       // Signed out while the request was out: these rows belong to the
       // previous user, so leave the cleared state alone.
       if (generation != _generation) return;
+      _error = remoteError;
 
       final combinedRaw = [...localLogs, ...rawRemote];
 
@@ -125,11 +127,14 @@ class InspectionHistoryProvider extends ChangeNotifier {
       // Don't clear _error here: if the remote fetch failed above, the
       // "offline and cached logs only" warning must survive to the UI.
     } catch (e) {
-      _error = 'Could not load history. Check your connection.';
+      if (generation == _generation) _error = 'Could not load history. Check your connection.';
       debugPrint('InspectionHistoryProvider error: $e');
     } finally {
-      _isLoading = false;
-      notifyListeners();
+      // clear() already reset and notified; a newer fetch may be running.
+      if (generation == _generation) {
+        _isLoading = false;
+        notifyListeners();
+      }
     }
   }
 

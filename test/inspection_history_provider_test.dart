@@ -13,4 +13,18 @@ void main() {
     expect(p.isEmpty, isTrue);
     expect(notified, 1);
   });
+
+  test('a fetch that outlives clear() leaves the cleared state alone', () async {
+    // No Supabase or Hive here, so the fetch fails on both paths; the point is
+    // that neither failure may write into state that belongs to the next user.
+    final p = InspectionHistoryProvider();
+    var notified = 0;
+    p.addListener(() => notified++);
+    final inFlight = p.fetchHistory();
+    p.clear();
+    await inFlight;
+    expect(p.error, isNull);
+    expect(p.isLoading, isFalse);
+    expect(notified, 2, reason: 'fetch start + clear; the stale fetch stays silent');
+  });
 }
