@@ -15,8 +15,11 @@ $tag = "v$version-b$build"
 
 Set-Location $PSScriptRoot
 # One APK per CPU type: less than half the download of a universal APK.
+# flutter prints advisory warnings to stderr; only the exit code decides.
+$ErrorActionPreference = 'Continue'
 flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --build-number=$build --dart-define=APP_BUILD=$build
 if ($LASTEXITCODE -ne 0) { throw 'flutter build failed' }
+$ErrorActionPreference = 'Stop'
 
 $out = "$PSScriptRoot\build\release-upload"
 New-Item -ItemType Directory -Force $out | Out-Null

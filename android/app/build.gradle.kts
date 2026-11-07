@@ -18,7 +18,8 @@ plugins {
 
 android {
     namespace = "com.clowtec.inspector"
-    compileSdk = flutter.compileSdkVersion
+    // permission_handler_android 13.x compiles against 37; Flutter still defaults to 36.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
