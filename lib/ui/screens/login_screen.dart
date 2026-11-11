@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../data/services/auth_service.dart';
+import '../../core/password_rules.dart';
 import '../../core/theme/app_colors.dart';
 
 // [REF: LOGIN_SCREEN]
@@ -288,9 +289,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
               // [REF: OWNER_SIGNIN_ENTRY]
               // Below a divider rather than beside the inspector fields: these
-              // are two different audiences, and an establishment owner has no
-              // password to put in the form above — their sign-in is a mailed
-              // code and nothing else.
+              // are two different audiences. This is an owner's FIRST sign-in
+              // only: the mailed code leads to a forced set-password screen,
+              // and from then on they use the form above.
               Row(
                 children: [
                   Expanded(child: Container(height: 1, color: AppColors.border)),
@@ -327,7 +328,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         SizedBox(height: 2),
                         Text(
-                          'View your inspection results',
+                          'First time here? Get a code and set your password',
                           style: TextStyle(
                             fontFamily: '.SF Pro Text',
                             fontSize: 12,
@@ -439,10 +440,8 @@ class _LoginScreenState extends State<LoginScreen> {
   // [REF: OWNER_SIGNIN_DIALOG]
   /// Two steps in one dialog: address, then the code mailed to it.
   ///
-  /// There is no password here and there is not meant to be. A generated
-  /// temporary password would make the mailbox the real credential anyway,
-  /// while adding a forced-change screen, a reset path and a lockout policy —
-  /// and leaving a live credential sitting in an inbox.
+  /// No password is asked for here: the code proves the mailbox, and the
+  /// router then holds the owner on /my/set-password until they choose one.
   ///
   /// The step always advances after "Send code", whatever the server said.
   /// Only connectivity failures and rate limits are surfaced: the user can
@@ -532,9 +531,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 // check the dialog would be a passwordless sign-in for
                 // officers and admins too.
                 //
-                // Staff have passwords and the form above; an owner has only
-                // this. So a non-owner session is ended rather than handed to
-                // the router.
+                // Staff have passwords and the form above. So a non-owner
+                // session is ended rather than handed to the router.
                 //
                 // Nothing here is gated on the dialog still being mounted: the
                 // new session can make the router dismiss it, and that must not
@@ -591,7 +589,8 @@ class _LoginScreenState extends State<LoginScreen> {
                               'on its way. It expires shortly.'
                           : 'Enter the email address the City Health Office '
                               'has on record for your establishment. We will '
-                              'send you a code — no password needed.',
+                              'send you a code, then you will set a password '
+                              'for next time.',
                       style: const TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 13,
@@ -746,7 +745,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: passwordController,
                   decoration: _dialogInputDecoration('Password'),
                   obscureText: true,
-                  validator: (v) => v!.length < 6 ? 'Min 6 characters' : null,
+                  validator: (v) => PasswordRules.blocker(v ?? ''),
                 ),
                 const SizedBox(height: 16),
                 TextFormField(

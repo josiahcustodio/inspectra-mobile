@@ -1,4 +1,5 @@
 import 'package:go_router/go_router.dart';
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -63,8 +64,8 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
   // [REF: PROPOSED_CONTACT]
   // The establishment's contact address, asked on every inspection rather than
   // only when an order is issued: this is the one moment anyone is standing in
-  // front of the person who knows it. It does not take effect until an admin
-  // approves it, so a typo cannot quietly mail a legal notice to a stranger.
+  // front of the person who knows it. The server attaches it to the
+  // establishment as soon as the inspection uploads (10_auto_owner.sql).
   final TextEditingController _pointPersonController = TextEditingController();
   DateTime? _deadline;
 
@@ -106,7 +107,11 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
     super.initState();
     // From Hive, not widget.establishment: the list that opened this screen may
     // predate a pin, and a stale null would skip the replace confirmation.
-    _lat = (OfflineService.getEstablishmentById(widget.establishment.id) ?? widget.establishment).latitude;
+    final cached = OfflineService.getEstablishmentById(widget.establishment.id) ?? widget.establishment;
+    _lat = cached.latitude;
+    // Prefilled so a re-inspection restates the address on record instead of
+    // submitting a blank one.
+    _pointPersonController.text = cached.pointPersonEmail ?? '';
     _categoryOptions = OfflineService.getLocalCategoryOptions();
 
     // [REF: CATEGORY_SUGGESTION_SOURCE]
@@ -613,17 +618,17 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
     // One call, one rule: everything that makes the order issuable lives in
     // SanitaryOrder.firstBlocker, so the screen cannot enforce a different
     // document than the module describes.
-    // An empty defect list when no order is being issued, so the per-defect
-    // note and correction are required by the ORDER rather than in general.
-    // Nothing enforced them before this change, and a withheld order should
-    // not start enforcing them now.
-    final blocker = SanitaryOrder.firstBlocker(
-      defects: issuesOrder ? defects : const [],
-      timeGiven: _timeGivenController.text,
-      deadline: _deadline,
-      receivedByName: _receivedByController.text,
-      pointPersonEmail: _pointPersonController.text,
-    );
+    // The per-defect note and correction are required on every submission;
+    // the empty defect list only skips the order's own fields (time given,
+    // deadline, received-by) when no order is being issued.
+    final blocker = SanitaryOrder.defectBlocker(defects) ??
+        SanitaryOrder.firstBlocker(
+          defects: issuesOrder ? defects : const [],
+          timeGiven: _timeGivenController.text,
+          deadline: _deadline,
+          receivedByName: _receivedByController.text,
+          pointPersonEmail: _pointPersonController.text,
+        );
     if (blocker != null) {
       setState(() => _isSubmitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -686,38 +691,39 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
       results: resultsArray,
     );
 
-    final success = await SyncService.submitInspectionLog(log);
-
-    // Guarded: a system-back pop while the submit spinner is up disposes
-    // this State mid-await, and setState after dispose throws. The queue
-    // write below must still run either way — the inspection is already
-    // scored, and losing it to a navigation gesture would be far
-    // worse than a stale flag on a dead State.
-    if (mounted) {
-      setState(() {
-        _isSubmitting = false;
-      });
-    }
-
-    if (success) {
+    // Local first: the queue write is the submission, so the form closes at
+    // disk speed instead of waiting on a request that, offline, only returns
+    // after the network stack gives up. The upload then runs behind the
+    // home screen; a failure simply leaves the entry in the pending queue.
+    try {
+      await OfflineService.inspectionsQueueBox.put(log.id, jsonEncode(log.toJson()));
+    } catch (e) {
+      // Nothing was saved: keep the form open with its answers intact.
+      debugPrint('Queue write failed: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Submitted Successfully!')));
-        context.pop(); // Go back home
+        setState(() => _isSubmitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not save the inspection on this device. Try again.')));
       }
       return;
     }
 
-    final jsonStr = jsonEncode(log.toJson());
-    await OfflineService.inspectionsQueueBox.put(log.id, jsonStr);
+    // Mirror the address locally, so opening this establishment again before
+    // the next sync shows it.
+    final cachedEst = OfflineService.getEstablishmentById(widget.establishment.id);
+    if (log.proposedPointPersonEmail != null && cachedEst != null) {
+      cachedEst.pointPersonEmail = log.proposedPointPersonEmail;
+      await cachedEst.save();
+    }
+
+    // [REF: INSPECTION_SUBMIT_REMOTE]
+    unawaited(SyncService.syncSingleInspection(log.id));
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Saved offline. Will sync later.'),
-        ),
+        const SnackBar(content: Text('Inspection saved. Uploading when online.')),
       );
-      context.pop(); // Go back home even if offline
+      context.pop(); // Go back home
     }
   }
 
@@ -1145,8 +1151,8 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
                               ),
                               const SizedBox(height: 6),
                               const Text(
-                                'An administrator reviews this before any copy '
-                                'is sent or any access is granted.',
+                                'Saved to this establishment. The owner signs in '
+                                'with this address to view results.',
                                 style: TextStyle(
                                   fontFamily: '.SF Pro Text',
                                   fontSize: 11,

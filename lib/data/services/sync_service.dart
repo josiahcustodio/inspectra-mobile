@@ -10,18 +10,6 @@ class SyncService {
 
   // ─── Inspection Logs ────────────────────────────────────────────────────────
 
-  /// Submits a single [InspectionLog] to the database.
-  // [REF: INSPECTION_SUBMIT_REMOTE]
-  static Future<bool> submitInspectionLog(InspectionLog log) async {
-    try {
-      await _db.from('inspection_logs').upsert(log.toJson());
-      return true;
-    } catch (e) {
-      debugPrint('Submission failed: $e');
-      return false;
-    }
-  }
-
   /// Drains one queue entry end to end. The single owner of the per-item
   /// protocol — [syncPendingInspections] and [syncSingleInspection] both
   /// delegate here, so the ordering below can never again be fixed in the

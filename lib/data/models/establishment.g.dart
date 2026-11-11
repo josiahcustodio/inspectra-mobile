@@ -40,13 +40,14 @@ class EstablishmentAdapter extends TypeAdapter<Establishment> {
       tin: fields[20] as String?,
       latitude: fields[21] as double?,
       longitude: fields[22] as double?,
+      pointPersonEmail: fields[23] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Establishment obj) {
     writer
-      ..writeByte(23)
+      ..writeByte(24)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -92,7 +93,9 @@ class EstablishmentAdapter extends TypeAdapter<Establishment> {
       ..writeByte(21)
       ..write(obj.latitude)
       ..writeByte(22)
-      ..write(obj.longitude);
+      ..write(obj.longitude)
+      ..writeByte(23)
+      ..write(obj.pointPersonEmail);
   }
 
   @override

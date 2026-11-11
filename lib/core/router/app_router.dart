@@ -10,6 +10,7 @@ import '../../ui/screens/mfa_verify_screen.dart';
 import '../../ui/screens/verify_email_screen.dart';
 import '../../ui/screens/owner_home_screen.dart';
 import '../../ui/screens/pending_approval_screen.dart';
+import '../../ui/screens/set_password_screen.dart';
 
 import '../../ui/screens/inspection_form_screen.dart';
 import '../../ui/screens/inspection_details_screen.dart';
@@ -93,6 +94,13 @@ GoRouter createAppRouter(AuthProvider authProvider) {
       // Owners: read-only, no sync, no MFA enrollment, nothing under the
       // inspector shell. Checked before the MFA gates, which is the point.
       if (authProvider.isOwner) {
+        // [REF: OWNER_SET_PASSWORD]
+        // The mailed code is the first sign-in only; nothing else opens until
+        // the account has a password.
+        if (authProvider.ownerNeedsPassword) {
+          return loc == '/my/set-password' ? null : '/my/set-password';
+        }
+        if (loc == '/my/set-password') return '/my/inspections';
         // /inspection/details/:id is shared with inspectors; RLS decides what
         // a given session can actually read, so there is nothing to duplicate.
         if (isGoingToOwner || loc.startsWith('/inspection/details/')) {
@@ -183,6 +191,11 @@ GoRouter createAppRouter(AuthProvider authProvider) {
         path: '/my/inspections',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const OwnerHomeScreen(),
+      ),
+      GoRoute(
+        path: '/my/set-password',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const SetPasswordScreen(),
       ),
       // No /establishments/add or /establishments/edit route: the web admin is
       // the sole owner of establishment data, so there is nowhere on mobile to

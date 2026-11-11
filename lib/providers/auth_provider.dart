@@ -203,6 +203,25 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  /// An owner who signed in with a code and has not chosen a password yet.
+  bool get ownerNeedsPassword => isOwner && !AuthService.passwordSet;
+
+  Future<bool> setOwnerPassword(String password) async {
+    _setLoading(true);
+    _setErrorMessage(null);
+    try {
+      await AuthService.setOwnerPassword(password);
+      return true;
+    } catch (e) {
+      _setErrorMessage(e is Exception
+          ? e.toString().replaceFirst('Exception: ', '')
+          : e.toString());
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
   Future<void> refreshMfaStatus() async {
     if (!isAuthenticated) return;
     _needsAal2 = MfaService.needsAal2Upgrade;

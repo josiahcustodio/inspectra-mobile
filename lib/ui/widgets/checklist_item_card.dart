@@ -117,7 +117,7 @@ class ChecklistItemCard extends StatelessWidget {
                 // The two columns of the Sanitary Order's table, captured in
                 // the inspector's own words at the moment they see the defect.
                 // Both only exist on a Fail, and both are required by
-                // SanitaryOrder.firstBlocker — an order that names a violation
+                // SanitaryOrder.defectBlocker on every submit — an order that names a violation
                 // without saying what to fix is not one anybody can comply
                 // with, and a blank defect line is unenforceable.
                 AnimatedSize(

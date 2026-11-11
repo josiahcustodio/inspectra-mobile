@@ -125,8 +125,8 @@ class AuthService {
   /// profiles trigger (10_auto_owner.sql) makes it an owner if an inspector
   /// has recorded that address on an establishment. Anyone can mint a
   /// 'pending' account this way; it can read nothing, and the owner dialog in
-  /// login_screen.dart signs a non-owner straight back out. There is no
-  /// password anywhere in this flow: the mailbox is the credential.
+  /// login_screen.dart signs a non-owner straight back out. The code is the
+  /// first sign-in only: the router then holds the owner on /my/set-password.
   static Future<void> sendOwnerOtp(String email) async {
     try {
       await _auth.signInWithOtp(email: email, shouldCreateUser: true);
@@ -158,6 +158,37 @@ class AuthService {
     } catch (e) {
       debugPrint('verifyOwnerOtp error: $e');
       throw Exception('Could not verify the code. Check your connection and try again.');
+    }
+  }
+
+  // [REF: OWNER_SET_PASSWORD]
+  /// Gives a code-verified owner account its password. `password_set` in the
+  /// user metadata is how the router knows the step is done: Supabase does not
+  /// tell a client whether an account has a password.
+  static Future<void> setOwnerPassword(String password) async {
+    try {
+      await _auth.updateUser(
+          UserAttributes(password: password, data: {'password_set': true}));
+    } on AuthException catch (e) {
+      debugPrint('setOwnerPassword AuthException: ${e.code} ${e.message}');
+      throw _friendlyAuthError(e);
+    } catch (e) {
+      debugPrint('setOwnerPassword error: $e');
+      throw Exception('Could not save the password. Check your connection and try again.');
+    }
+  }
+
+  static bool get passwordSet {
+    if (_auth.currentUser?.userMetadata?['password_set'] == true) return true;
+    // A session opened WITH a password proves one exists even without the
+    // flag: an owner who set theirs through the web reset link.
+    try {
+      return _auth.mfa
+          .getAuthenticatorAssuranceLevel()
+          .currentAuthenticationMethods
+          .any((m) => m.method == AMRMethod.password);
+    } catch (_) {
+      return false;
     }
   }
 
@@ -252,7 +283,11 @@ class AuthService {
       case 'email_exists':
         return Exception('An account with this email already exists.');
       case 'weak_password':
-        return Exception('Password is too weak. Use at least 6 characters.');
+        return Exception('Password is too weak. Use at least 8 characters '
+            'with an uppercase letter, a lowercase letter, a number and a symbol.');
+      case 'reauthentication_needed':
+        return Exception('For your security, sign out, sign in again with a '
+            'new code, then set your password.');
       case 'validation_failed':
         return Exception('The email address is not valid.');
       case 'provider_disabled':

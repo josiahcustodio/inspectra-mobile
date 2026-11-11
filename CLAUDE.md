@@ -17,7 +17,7 @@ one, read those before opening source files. If not, the essentials are below.
 - **Stack:** `supabase_flutter 2.x`, `provider` (ChangeNotifier), `go_router`, `hive_flutter` (offline cache), `maplibre_gl` (OpenFreeMap style, keyless),
   `geolocator`/`permission_handler` (GPS pin), `ota_update` (self-update), `qr_flutter` (MFA QR only). No Firebase, camera, signature pad or QR scanner anymore
   (`firebase.json`, `firestore.rules`, `bin/*.py`, `web-dashboard/` are dead leftovers).
-- **Roles** come from `profiles.role` (`AuthService.fetchRole`, cached in Hive `app_prefs`): `pending` → /pending-approval; `owner` → /my/inspections (read-only, OTP sign-in);
+- **Roles** come from `profiles.role` (`AuthService.fetchRole`, cached in Hive `app_prefs`): `pending` → /pending-approval; `owner` → /my/inspections (read-only; first sign-in is an emailed OTP, then the router holds them on /my/set-password until `password_set` metadata or a password session exists, after which they use the normal form; rules in `core/password_rules.dart`);
   `officer`/`admin`/`department_head` → inspector shell (TOTP enrolment mandatory, then `/sync`, then `/home`). RLS blocks department_head writes server-side.
 - **Router guard order** (`lib/core/router/app_router.dart`): no session → /login; role unknown → /mfa-verify or /sync; pending; owner; AAL1+factor → /mfa-verify;
   unconfirmed email → /verify-email; no factor → /mfa-enroll. `AuthProvider` ignores `tokenRefreshed` on purpose (sign-in loop guard; do not remove).
@@ -26,7 +26,7 @@ one, read those before opening source files. If not, the essentials are below.
 - **Supabase surface:** tables only, no RPC/Edge Function/Storage calls. `profiles` (role), `categories` / `establishments` / `checklist_templates` (paged pull in
   `offline_service.dart`), `establishments.update(latitude, longitude)` (GPS pin drain), `inspection_logs` upsert/select (`sync_service.dart`, history limit 50, RLS-scoped).
 - **Offline:** Hive boxes `establishments`, `checklist_templates`, `categories`, `inspections_queue` (JSON by log id), `app_prefs`. Master data syncs at splash;
-  an empty server snapshot never wipes the cache. The queue drains **only** when the user taps Sync Now / Submit (last-write-wins upsert on `id`).
+  an empty server snapshot never wipes the cache. Submit writes the queue first, closes the form, then uploads that entry in the background; otherwise the queue drains **only** when the user taps Sync Now (last-write-wins upsert on `id`).
 - **Scoring** (`providers/rating_provider.dart`, contract in `core/rating_scale.dart` shared with web): `totalDemerits = Σ weight of FAIL` (missing weight = 5);
   `score = clamp(100 − totalDemerits, 0, 100)` only when every item answered; N/A free. Bands 90–100 Excellent #10B981, 70–89 Very Satisfactory #F59E0B, 0–69 Satisfactory #EF4444.
 - **Sanitary Order** (`core/sanitary_order.dart`): offered when any FAIL; needs note + correction per defect, time given, deadline (≤ +365 d), received-by. Writes `so_issued_at`,
@@ -45,4 +45,4 @@ one, read those before opening source files. If not, the essentials are below.
 - Authorization lives in Postgres RLS; any new write must be allowed by `is_authorized()` (admin|officer) or it fails silently for other roles.
 - Keep the rating contract identical to web `src/lib/ratingScale.ts`; `test/rating_scale_test.dart` guards it.
 - Don't reintroduce signatures, photo upload, QR scanning or Google sign-in; they were removed deliberately (2026-11).
-- Hive typeIds/field numbers are append-only (Establishment 0–22, ChecklistTemplate 1, InspectionCategory 2).
+- Hive typeIds/field numbers are append-only (Establishment 0–23, ChecklistTemplate 1, InspectionCategory 2).

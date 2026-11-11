@@ -93,6 +93,13 @@ class Establishment extends HiveObject {
   @HiveField(22)
   final double? longitude;
 
+  // [REF: PROPOSED_CONTACT]
+  // The owner / point person address on record. Mutable: the form writes the
+  // address an inspector just recorded so a re-inspection before the next
+  // sync still shows it.
+  @HiveField(23)
+  String? pointPersonEmail;
+
   bool get hasLocation => latitude != null && longitude != null;
 
   Establishment({
@@ -119,6 +126,7 @@ class Establishment extends HiveObject {
     this.tin,
     this.latitude,
     this.longitude,
+    this.pointPersonEmail,
   }) : id = (id == null || id.isEmpty) ? const Uuid().v4() : id;
 
   /// The same record with a new pin. Every other field is copied, because
@@ -147,6 +155,7 @@ class Establishment extends HiveObject {
         tin: tin,
         latitude: lat,
         longitude: lng,
+        pointPersonEmail: pointPersonEmail,
       );
 
   String get formattedAddress {
@@ -220,6 +229,7 @@ class Establishment extends HiveObject {
       tin: json['tin']?.toString(),
       latitude: (json['latitude'] as num?)?.toDouble(),
       longitude: (json['longitude'] as num?)?.toDouble(),
+      pointPersonEmail: json['point_person_email'] as String?,
     );
   }
 

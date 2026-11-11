@@ -109,6 +109,24 @@ class SanitaryOrder {
         'notices to the wrong place, or nowhere.';
   }
 
+  /// The first Fail missing its deficiency note or its correction, or null.
+  /// Required on EVERY submission, order or not: a Fail with no description
+  /// is a demerit nobody can act on.
+  static String? defectBlocker(List<SanitaryDefect> defects) {
+    for (final d in defects) {
+      final name = d.item.isEmpty ? d.checklistItemId : d.item;
+      if (d.defect.isEmpty) {
+        return 'Describe the deficiency for "$name" — every failed item '
+            'needs its violation written down.';
+      }
+      if (d.correction.isEmpty) {
+        return 'Add the recommended correction for "$name" — every failed '
+            'item must say what has to be fixed.';
+      }
+    }
+    return null;
+  }
+
   // [REF: SO_SUBMIT_GUARD]
   /// The first reason this order cannot be issued, or null when it is
   /// complete. Returns one message at a time on purpose: the inspector fixes
@@ -133,17 +151,8 @@ class SanitaryOrder {
   }) {
     if (defects.isEmpty) return null; // nothing to order
 
-    for (final d in defects) {
-      final name = d.item.isEmpty ? d.checklistItemId : d.item;
-      if (d.defect.isEmpty) {
-        return 'Describe the deficiency for "$name" — it is printed as the '
-            'violation on the Sanitary Order.';
-      }
-      if (d.correction.isEmpty) {
-        return 'Add the recommended correction for "$name" — an order must '
-            'say what has to be fixed.';
-      }
-    }
+    final defectBlocker = SanitaryOrder.defectBlocker(defects);
+    if (defectBlocker != null) return defectBlocker;
 
     if ((timeGiven ?? '').trim().isEmpty) {
       return 'Enter the time given for correction.';

@@ -192,6 +192,14 @@ void main() {
       expect(blockerFor(defects), contains('recommended correction'));
     });
 
+    test('note and correction are required even when no order is issued', () {
+      final defects =
+          SanitaryOrder.defectsFrom([row('1', 'Fail', note: 'No hairnet')]);
+      expect(SanitaryOrder.defectBlocker(defects),
+          contains('recommended correction'));
+      expect(SanitaryOrder.defectBlocker(complete()), isNull);
+    });
+
     test('whitespace does not satisfy either column', () {
       final defects = SanitaryOrder.defectsFrom(
           [row('1', 'Fail', note: '   ', correction: '  ')]);
