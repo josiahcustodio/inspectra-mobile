@@ -713,7 +713,12 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
     final cachedEst = OfflineService.getEstablishmentById(widget.establishment.id);
     if (log.proposedPointPersonEmail != null && cachedEst != null) {
       cachedEst.pointPersonEmail = log.proposedPointPersonEmail;
-      await cachedEst.save();
+      // A convenience only: it must never stop the upload or the pop below.
+      try {
+        await cachedEst.save();
+      } catch (e) {
+        debugPrint('Could not mirror point person email: $e');
+      }
     }
 
     // [REF: INSPECTION_SUBMIT_REMOTE]

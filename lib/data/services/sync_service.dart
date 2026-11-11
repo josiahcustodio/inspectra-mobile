@@ -10,6 +10,21 @@ class SyncService {
 
   // ─── Inspection Logs ────────────────────────────────────────────────────────
 
+  /// Why the last sync attempt failed, for the Sync buttons to show. A server
+  /// refusal (RLS, a constraint, an expired session) is NOT a connection
+  /// problem, and saying "check your connection" for one sends the inspector
+  /// looking in the wrong place while the entry can never upload.
+  static String? lastFailure;
+
+  static void _recordFailure(Object e) {
+    lastFailure = e is PostgrestException
+        ? 'The server refused this inspection: ${e.message}'
+            '${e.code == null ? '' : ' (${e.code})'}'
+        : e is AuthException
+            ? 'Your session has expired. Sign out, sign in again, then sync.'
+            : 'No connection to the server. Check your internet and try again.';
+  }
+
   /// Drains one queue entry end to end. The single owner of the per-item
   /// protocol — [syncPendingInspections] and [syncSingleInspection] both
   /// delegate here, so the ordering below can never again be fixed in the
@@ -33,7 +48,12 @@ class SyncService {
 
     final log = InspectionLog.fromJson(data);
 
-    await _db.from('inspection_logs').upsert(log.toJson());
+    // Bounded: a request started on a dead link otherwise never returns, and
+    // the Sync buttons stay disabled behind it.
+    await _db
+        .from('inspection_logs')
+        .upsert(log.toJson())
+        .timeout(const Duration(seconds: 30));
 
     // Delete from local queue ONLY on success
     await box.delete(key);
@@ -56,6 +76,7 @@ class SyncService {
         }
       } catch (e) {
         debugPrint('Failed to sync queue item ${entry.key}: $e');
+        _recordFailure(e);
         allSuccess = false;
         // Do not break; attempt others
       }
@@ -76,6 +97,7 @@ class SyncService {
       return await _syncQueueEntry(box, key, jsonString);
     } catch (e) {
       debugPrint('Failed to sync single item $key: $e');
+      _recordFailure(e);
       return false;
     }
   }

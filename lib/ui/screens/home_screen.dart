@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../core/rating_scale.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/services/offline_service.dart';
+import '../../data/services/sync_service.dart';
 import '../../providers/pending_inspections_provider.dart';
 import '../../providers/inspection_history_provider.dart';
 import '../widgets/new_inspection_modal.dart';
@@ -171,8 +172,8 @@ class HomeScreen extends StatelessWidget {
 
     if (!success && !provider.isEmpty) {
       messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Waiting for internet connection to sync...'),
+        SnackBar(
+          content: Text(SyncService.lastFailure ?? 'Could not sync. Try again.'),
           behavior: SnackBarBehavior.floating,
         ),
       );

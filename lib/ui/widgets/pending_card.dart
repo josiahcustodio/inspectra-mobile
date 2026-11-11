@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../data/services/sync_service.dart';
 import '../../providers/pending_inspections_provider.dart';
 
 // [REF: PENDING_CARD]
@@ -217,7 +218,7 @@ class PendingCard extends StatelessWidget {
                                                   if (provider.isEmpty) context.pop();
                                                 } else {
                                                   ScaffoldMessenger.of(context).showSnackBar(
-                                                      const SnackBar(content: Text('Failed to sync. Check connection.')));
+                                                      SnackBar(content: Text(SyncService.lastFailure ?? 'Failed to sync. Try again.')));
                                                 }
                                               }
                                             },
