@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../core/sanitary_order.dart';
 import '../models/inspection_log.dart';
 import 'offline_service.dart';
 
@@ -16,13 +17,44 @@ class SyncService {
   /// looking in the wrong place while the entry can never upload.
   static String? lastFailure;
 
+  /// True when [lastFailure] was the Sanitary Order number colliding with
+  /// one already issued this year (inspection_logs_so_no_series_idx). The
+  /// entry can never upload as it is, so the pending list offers to change
+  /// the number — see [setQueuedOrderNo].
+  static bool lastFailureWasDuplicateOrderNo = false;
+
   static void _recordFailure(Object e) {
+    lastFailureWasDuplicateOrderNo = e is PostgrestException &&
+        e.code == '23505' &&
+        e.message.contains('so_no');
+    if (lastFailureWasDuplicateOrderNo) {
+      lastFailure = 'That Sanitary Order No. is already used on another order '
+          'this year. Open the pending list and tap Submit on it to change '
+          'the number.';
+      return;
+    }
     lastFailure = e is PostgrestException
         ? 'The server refused this inspection: ${e.message}'
             '${e.code == null ? '' : ' (${e.code})'}'
         : e is AuthException
             ? 'Your session has expired. Sign out, sign in again, then sync.'
             : 'No connection to the server. Check your internet and try again.';
+  }
+
+  /// Rewrites the order number on a queued inspection; blank clears it (an
+  /// order may stay unnumbered, see SanitaryOrder.normalizeOrderNo).
+  static Future<void> setQueuedOrderNo(String key, String? orderNo) async {
+    final box = OfflineService.inspectionsQueueBox;
+    final jsonString = box.get(key);
+    if (jsonString == null) return;
+    final Map<String, dynamic> data = jsonDecode(jsonString);
+    final normalized = SanitaryOrder.normalizeOrderNo(orderNo);
+    if (normalized == null) {
+      data.remove('so_no');
+    } else {
+      data['so_no'] = normalized;
+    }
+    await box.put(key, jsonEncode(data));
   }
 
   /// Drains one queue entry end to end. The single owner of the per-item

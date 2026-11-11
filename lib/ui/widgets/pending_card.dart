@@ -210,7 +210,18 @@ class PendingCard extends StatelessWidget {
                                       onPressed: provider.isSyncing
                                           ? null
                                           : () async {
-                                              final success = await provider.submitSingle(key);
+                                              var success = await provider.submitSingle(key);
+                                              // A duplicate order number can never upload as typed:
+                                              // ask for the right one and try once more.
+                                              if (!success &&
+                                                  SyncService.lastFailureWasDuplicateOrderNo &&
+                                                  context.mounted) {
+                                                final fixed = await _askOrderNo(
+                                                    context, data['so_no']?.toString() ?? '');
+                                                if (fixed == null) return;
+                                                await SyncService.setQueuedOrderNo(key, fixed);
+                                                success = await provider.submitSingle(key);
+                                              }
                                               if (context.mounted) {
                                                 if (success) {
                                                   ScaffoldMessenger.of(context).showSnackBar(
@@ -236,6 +247,39 @@ class PendingCard extends StatelessWidget {
           },
         );
       },
+    );
+  }
+
+  /// The corrected order number for a queued inspection, or null if the
+  /// inspector backed out. Blank is a valid answer: the order uploads
+  /// unnumbered.
+  Future<String?> _askOrderNo(BuildContext context, String current) {
+    var value = current;
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Sanitary Order No. already used'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('No. $current is already on another order this year. Enter '
+                'the correct number, or leave it blank to upload without one.'),
+            const SizedBox(height: 12),
+            TextFormField(
+              initialValue: current,
+              autofocus: true,
+              onChanged: (v) => value = v,
+              decoration: const InputDecoration(labelText: 'Sanitary Order No.'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, value), child: const Text('Save and submit')),
+        ],
+      ),
     );
   }
 }
