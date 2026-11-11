@@ -785,7 +785,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   // comes next instead of waiting for a session.
                   //
                   // The activation sentence is not optional. A new account is
-                  // 'pending' now (see [REF: NEW_USER_IS_POWERLESS]) and can
+                  // 'pending' now (see [REF: PENDING_APPROVAL]) and can
                   // read nothing at all, so a message that stopped at "then
                   // sign in" would promise a working app and deliver an empty
                   // one.

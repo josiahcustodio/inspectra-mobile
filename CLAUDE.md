@@ -9,7 +9,7 @@ establishment owners read results and Sanitary Orders in this app's owner mode. 
 
 The system docs are kept in the web repo `josiahcustodio/inspectra-web` under `docs/claude/`:
 `MOBILE.md` (this app, file by file), `BACKEND.md` (schema, roles, RLS, triggers, Edge Functions, auth config),
-`WEB.md` (admin SPA), `FLOWS.md` (end-to-end flows, deployment, timeline, open issues). If that repo is checked out next to this
+`WEB.md` (admin SPA), `FLOWS.md` (end-to-end flows, deployment, timeline, open issues), `ANCHORS.md` (every `[REF: …]` anchor with line range and UI spot). If that repo is checked out next to this
 one, read those before opening source files. If not, the essentials are below.
 
 ## Essentials
@@ -37,7 +37,7 @@ one, read those before opening source files. If not, the essentials are below.
 - **Release:** publish only with `.\release.ps1 "notes"` (split APKs + `update.json` → GitHub release in public `josiahcustodio/inspectra-releases`, then bumps
   `pubspec.yaml` build → commit it). `lib/core/app_updater.dart` checks that manifest on Wi-Fi (startup/connectivity/resume); `APP_BUILD` dart-define 0 = updater off.
   Signing needs gitignored `android/key.properties` + `android/app/release.keystore`; losing the keystore ends in-place updates. Never `flutter clean` with an undistributed APK in `build/`.
-- **Tests:** `flutter test` (12 files: updater, category availability/suggester, checklist fields, details card, history provider, inspection_log json, owner OTP dialog, rating scale, sanitary order).
+- **Tests:** `flutter test` (11 files: updater, category availability/suggester, checklist fields, details card, history provider, inspection_log json, owner OTP dialog, rating scale, sanitary order).
   Keep `flutter analyze` clean.
 
 ## Rules
